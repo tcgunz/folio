@@ -1364,12 +1364,14 @@ async function ocrCanvas(worker,c){
   return(data.words||[]).filter(w=>w.text&&w.text.trim()&&w.confidence>25).map(w=>({t:w.text.trim(),x0:w.bbox.x0/src.width,y0:w.bbox.y0/src.height,x1:w.bbox.x1/src.width,y1:w.bbox.y1/src.height}));
 }
 function drawHiddenWords(page,words,font,toPdf){
+  const L=PDFLib;page.pushOperators(L.pushGraphicsState(),L.setTextRenderingMode(L.TextRenderingMode.Invisible));
   for(const w of words){
     const t=[...w.t].map(ch=>{try{font.encodeText(ch);return ch}catch(e){return ''}}).join('');if(!t)continue;
     const[a,b]=toPdf(w.x0,w.y1),[c,d]=toPdf(w.x1,w.y0);const W=c-a,H=d-b;if(W<=0||H<=0)continue;
     const wid=font.widthOfTextAtSize(t,1)||1,size=Math.max(1,Math.min(H*1.25,W/wid));
-    try{page.drawText(t,{x:a,y:b+H*.2,size,font,opacity:0})}catch(e){}
+    try{page.drawText(t,{x:a,y:b+H*.2,size,font})}catch(e){}
   }
+  page.pushOperators(L.popGraphicsState());
 }
 async function ocrDocument(){
   if(!S.pages.length){toast('Open a PDF first');return}
