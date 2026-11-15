@@ -338,7 +338,7 @@ body[data-theme=rose]{--acc:#be185d;--accd:#9d174d;--acc2:#fce7f3;--bg:#faf4f7;-
     <button data-m="rctoggle" id="mRc"><span class="ic" data-i="grid"></span><span id="mRcL">Hide Receipts &amp; expenses</span></button>
     <hr>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 57</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 58</div>
   </div>
 </div>
 
@@ -2259,6 +2259,16 @@ function readReceipt(text){
 
 /* ---------------- receipt details + spreadsheet export ---------------- */
 const CATS=['Meals & entertainment','Office supplies','Travel','Vehicle & fuel','Phone & internet','Utilities','Rent','Professional fees','Advertising','Software & subscriptions','Gifts','Medical','Groceries','Home office','Equipment','Other'];
+const NEWCAT='＋ Add your own category…';
+function myCats(){try{return JSON.parse(lsGet('folio.cats')||'[]')}catch(e){return[]}}
+function allCats(extra){const own=myCats(),base=CATS.filter(c=>c!=='Other');return[...new Set([...base,...own,...(extra||[]).filter(Boolean),'Other'])]}
+/* the select's "Add your own" line: ask for a name, remember it, select it. Returns the chosen value. */
+function pickNewCat(selEl,prev){const n=(prompt('New category name (for example: Training, Licences, Membership fees)')||'').trim().replace(/\s+/g,' ').slice(0,40);
+  if(!n){selEl.value=prev||'';return prev||''}
+  const own=myCats();if(!own.concat(CATS).some(c=>c.toLowerCase()===n.toLowerCase())){own.push(n);lsSet('folio.cats',JSON.stringify(own))}
+  const name=allCats().find(c=>c.toLowerCase()===n.toLowerCase())||n;
+  if(![...selEl.options].some(o=>o.value===name)){const o=new Option(name,name),nw=[...selEl.options].find(o=>o.value===NEWCAT);selEl.add(o,nw||null)}
+  selEl.value=name;toast(`Category “${name}” added`);return name}
 const isReceiptFolder=f=>/receipt|expense|reçu/i.test(f||'');
 function vcatGet(v){try{return(JSON.parse(lsGet('folio.vcat')||'{}'))[(v||'').toLowerCase()]||''}catch(e){return ''}}
 function vcatSet(v,c){if(!v||!c)return;try{const m=JSON.parse(lsGet('folio.vcat')||'{}');m[v.toLowerCase()]=c;lsSet('folio.vcat',JSON.stringify(m))}catch(e){}}
@@ -2308,7 +2318,7 @@ async function ocrDocText(d,onProg){
 function openReceiptDetails(d,isNew){
   const auto=d.receipt?null:readReceipt(d.text||'');const r=Object.assign({vendor:'',date:'',subtotal:'',total:'',tax:'',tip:'',payment:'',category:'',note:''},auto||{},d.receipt||{});
   {const mem=vcatGet(r.vendor);if(mem&&!(d.receipt&&d.receipt.category))r.category=mem}
-  const noText=!d.text||d.text.length<8;const cats=[...new Set([...CATS,r.category].filter(Boolean))];
+  const noText=!d.text||d.text.length<8;const cats=allCats([r.category]);
   const inp=(id,lab,val,type='text',extra='')=>`<div class="fld"><label>${lab}</label><input type="${type}" id="${id}" value="${esc(val||'')}" ${extra}></div>`;
   openModal(`<h3>${isNew?'Check the receipt details':'Receipt details'}</h3>
    ${isNew&&!noText?'<p class="small" style="margin-top:-6px">Folio read these from the receipt. Fix anything that looks wrong.</p>':''}
@@ -2319,7 +2329,7 @@ function openReceiptDetails(d,isNew){
    ${inp('rcG',`Tip (${curSym()})`,r.tip,'text','inputmode="decimal"')}
    <p class="small" id="rcMath" style="grid-column:1/-1;display:none;margin:-4px 0 6px"></p>
    <div class="fld"><label>Paid with</label><select id="rcP">${['','Visa','Mastercard','Amex','Debit','Cash','Apple Pay','Google Pay','Gift card','Cheque','E-transfer','Other'].map(p=>`<option ${p===r.payment?'selected':''}>${p}</option>`).join('')}</select></div></div>
-   <div class="fld"><label>Category</label><select id="rcC"><option value=""></option>${cats.map(c=>`<option ${c===r.category?'selected':''}>${esc(c)}</option>`).join('')}</select></div>
+   <div class="fld"><label>Category</label><select id="rcC"><option value=""></option>${cats.map(c=>`<option ${c===r.category?'selected':''}>${esc(c)}</option>`).join('')}<option>${NEWCAT}</option></select></div>
    ${inp('rcN','Description (what it was for)',r.note)}
    <button class="link small" id="rcTxtB" style="margin:2px 0 6px">See the text Folio read</button><textarea id="rcTxt" readonly rows="8" style="display:none;font-size:12px;margin-bottom:8px"></textarea>
    <div class="btns"><button class="btn" data-x>${isNew?'Skip':'Cancel'}</button><button class="btn pri" id="rcOk">Save details</button></div>`);
@@ -2347,6 +2357,7 @@ function openReceiptDetails(d,isNew){
     if(!isNaN(tt)&&Math.abs(want-tt)<=.02){m.style.display='block';m.style.color='var(--acc)';m.textContent=`✓ ${lab} = ${fmtMoney(want)}, matches the total`;m.onclick=null;return}
     m.style.display='block';m.style.color='#d97706';m.style.cursor='pointer';m.textContent=`${lab} = ${fmtMoney(want)}${isNaN(tt)?'':`, but the total says ${fmtMoney(tt)}`}${!isNaN(tt)&&tt>want?(isNaN(tp)||!tp?' (add the tip?)':' (a fee?)'):''} · tap to use ${fmtMoney(want)}`;m.onclick=()=>{$('#rcT').value=want.toFixed(2);mathCheck();hstHint()}};
   $('#rcRead').onclick=()=>readNow(true);
+  {let prevC=$('#rcC').value;$('#rcC').addEventListener('change',e=>{if(e.target.value===NEWCAT)prevC=pickNewCat(e.target,prevC);else prevC=e.target.value})}
   $('#rcView').onclick=()=>viewReceipt(d);
   try{['rcT','rcX','rcS','rcG'].forEach(id=>$('#'+id).addEventListener('input',()=>{hstHint();mathCheck()}));hstHint();mathCheck()}catch(e){console.error(e)}
   $('#rcTxtB').onclick=()=>{const t=$('#rcTxt');const show=t.style.display==='none';t.value=d.text||'(No text yet. Tap Read receipt.)';t.style.display=show?'block':'none';$('#rcTxtB').textContent=show?'Hide the text':'See the text Folio read'};
@@ -2354,7 +2365,7 @@ function openReceiptDetails(d,isNew){
   const num=v=>{const x=parseFloat(String(v).replace(/[^0-9.,-]/g,'').replace(',','.'));return isNaN(x)?'':x.toFixed(2)};
   $('#rcV').onchange=()=>{const c=vcatGet($('#rcV').value);if(c&&!$('#rcC').value){const s=$('#rcC');if(![...s.options].some(o=>o.value===c))s.add(new Option(c,c));s.value=c}};
   $('#rcOk').onclick=async()=>{
-    d.receipt={vendor:$('#rcV').value.trim(),date:$('#rcD').value,subtotal:num($('#rcS').value),total:num($('#rcT').value),tip:num($('#rcG').value),tax:num($('#rcX').value),payment:$('#rcP').value,category:$('#rcC').value,note:$('#rcN').value.trim()};
+    d.receipt={vendor:$('#rcV').value.trim(),date:$('#rcD').value,subtotal:num($('#rcS').value),total:num($('#rcT').value),tip:num($('#rcG').value),tax:num($('#rcX').value),payment:$('#rcP').value,category:$('#rcC').value===NEWCAT?'':$('#rcC').value,note:$('#rcN').value.trim()};
     vcatSet(d.receipt.vendor,d.receipt.category);
     try{await libPut(d);closeModal();toast($('#scan').classList.contains('on')&&!SC.pages.length?'Receipt saved. Ready for the next one.':'Receipt details saved');if($('#sheet').classList.contains('on'))renderSheet();else if($('#lib').classList.contains('on'))renderLib()}catch(e){toast('Could not save: '+(e.message||e))}
   };
@@ -2509,12 +2520,12 @@ function renderSheet(){
   const miss=SH.rows.filter(d=>!d.receipt||!d.receipt.total).length;$('#shFill').style.display=miss?'flex':'none';$('#shFill').lastChild.textContent=` Fill in missing (${miss})`;
   $('#shView').textContent=shIsList()?'Table view':'List view';
   if(shIsList()){renderSheetList();return}
-  const rows=shVisible(),cats=[...new Set([...CATS,...SH.rows.map(d=>(d.receipt||{}).category).filter(Boolean)])];
+  const rows=shVisible(),cats=allCats(SH.rows.map(d=>(d.receipt||{}).category));
   const sel=(f,opts,v)=>`<select data-f="${f}">${opts.map(o=>`<option ${o===v?'selected':''}>${esc(o)}</option>`).join('')}</select>`;
   $('#shTable').innerHTML=`<table class="xs"><thead><tr><th></th>${SHCOLS.map(([k,l])=>`<th data-k="${k}" class="${['tax','total','subtotal','tip'].includes(k)?'num':''}">${l}${SH.sort===k?(SH.dir>0?' ▲':' ▼'):''}</th>`).join('')}</tr></thead><tbody>
    ${rows.map(d=>{const r=d.receipt||{};return`<tr data-id="${d.id}"><td><button class="xth" data-open="${d.id}">${d.thumb?`<img src="${d.thumb}" alt="">`:'📄'}</button></td>
      <td><input type="date" data-f="date" value="${esc(r.date||'')}"></td><td><input data-f="vendor" value="${esc(r.vendor||'')}" placeholder="${esc(d.name)}"></td>
-     <td><input data-f="note" value="${esc(r.note||'')}" placeholder="What was it for?"></td><td>${sel('category',['',...cats],r.category||'')}</td><td>${sel('payment',PAYS,r.payment||'')}</td>
+     <td><input data-f="note" value="${esc(r.note||'')}" placeholder="What was it for?"></td><td>${sel('category',['',...cats,NEWCAT],r.category||'')}</td><td>${sel('payment',PAYS,r.payment||'')}</td>
      <td class="num"><input data-f="subtotal" inputmode="decimal" value="${esc(r.subtotal||'')}"></td><td class="num"><input data-f="tax" inputmode="decimal" value="${esc(r.tax||'')}"></td><td class="num"><input data-f="tip" inputmode="decimal" value="${esc(r.tip||'')}"></td><td class="num"><input data-f="total" inputmode="decimal" value="${esc(r.total||'')}"></td></tr>`}).join('')}
    </tbody><tfoot><tr><td></td><td colspan="6" id="shCount"></td><td class="num" id="shTax"></td><td class="num" id="shTip"></td><td class="num" id="shTot"></td></tr></tfoot></table>`;
   shTotals();
@@ -2529,6 +2540,7 @@ function shTotals(){
 }
 let shSaveT={};
 $('#shTable').addEventListener('input',e=>{const el=e.target.closest('[data-f]');if(!el)return;const tr=el.closest('tr'),d=SH.rows.find(x=>x.id===tr.dataset.id);if(!d)return;
+  if(el.dataset.f==='category'&&el.value===NEWCAT){pickNewCat(el,(d.receipt||{}).category||'');if(el.value&&el.value!==((d.receipt||{}).category||'')){document.querySelectorAll('#shTable select[data-f=category]').forEach(s=>{if(s!==el&&![...s.options].some(o=>o.value===el.value)){const nw=[...s.options].find(o=>o.value===NEWCAT);s.add(new Option(el.value,el.value),nw||null)}})}else return}
   d.receipt=Object.assign({vendor:'',date:'',subtotal:'',total:'',tax:'',tip:'',payment:'',category:'',note:''},d.receipt||{});d.receipt[el.dataset.f]=el.value;
   if(['total','tax','tip','date','category'].includes(el.dataset.f))shTotals();
   clearTimeout(shSaveT[d.id]);shSaveT[d.id]=setTimeout(()=>libPut(d).catch(()=>toast('Could not save that change')),500)});
