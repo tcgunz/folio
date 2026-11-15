@@ -31,8 +31,8 @@ svg{width:20px;height:20px;flex:none}
 #menu button{display:flex;width:100%;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;text-align:left}
 #menu button:hover:not(:disabled){background:#f1f3f5}
 #menu hr{border:0;border-top:1px solid var(--line);margin:4px 0}
-#viewer{flex:1;overflow:auto;position:relative;-webkit-overflow-scrolling:touch}
-#pages{padding:16px 10px 140px;display:flex;flex-direction:column;align-items:center;gap:14px;min-width:min-content}
+#viewer{flex:1;overflow:auto;position:relative;touch-action:pan-x pan-y;-webkit-overflow-scrolling:touch}
+#pages{will-change:transform;padding:16px 10px 140px;display:flex;flex-direction:column;align-items:center;gap:14px;min-width:min-content}
 .pg{position:relative;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.12),0 6px 20px rgba(0,0,0,.06);flex:none}
 .pg canvas{position:absolute;left:0;top:0;width:100%;height:100%}
 .pg .ov{touch-action:none;cursor:crosshair}
@@ -209,7 +209,7 @@ input.fo{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:point
     <button data-m="lib"><span class="ic" data-i="books"></span>Library</button>
     <hr>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 18</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 19</div>
   </div>
 </div>
 
@@ -694,6 +694,7 @@ function setSel(sel){
   renderSelbar();
 }
 function onDown(ev,e){
+  if(PINCH.on||(ev.pointerType==='touch'&&!ev.isPrimary))return;
   const pg=getPg(e.id);if(!pg)return;const t=S.tool;
   if(t==='hand'||t==='rotpage'){if(ev.pointerType==='mouse'){const v=$('#viewer');drag={mode:'pan',e,x:ev.clientX,y:ev.clientY,sl:v.scrollLeft,st:v.scrollTop};e.c2.setPointerCapture(ev.pointerId)}return}
   ev.preventDefault();
@@ -717,7 +718,7 @@ function onDown(ev,e){
     S.pending=null;setTool('select');drawOverlay(e);setSel({pid:pg.id,i:pg.annots.length-1});return}
 }
 function onMove(ev,e){
-  if(!drag||drag.e!==e)return;
+  if(PINCH.on||!drag||drag.e!==e)return;
   if(drag.mode==='pan'){const v=$('#viewer');v.scrollLeft=drag.sl-(ev.clientX-drag.x);v.scrollTop=drag.st-(ev.clientY-drag.y);return}
   const pg=getPg(e.id),vp=e.vp;const evs=(drag.mode==='ink'&&ev.getCoalescedEvents)?ev.getCoalescedEvents():[ev];
   for(const ce of (evs.length?evs:[ev])){
@@ -1840,6 +1841,37 @@ function attachPickers(){
 const _rt=renderTools;renderTools=function(){_rt();attachPickers()};
 
 /* ---------------- init ---------------- */
+/* ---------------- pinch to zoom ---------------- */
+const PINCH={on:null};
+(function(){
+  const v=$('#viewer'),box=$('#pages');
+  const dist=t=>Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
+  const mid=t=>[(t[0].clientX+t[1].clientX)/2,(t[0].clientY+t[1].clientY)/2];
+  const cancelDrag=()=>{if(!drag)return;const e=drag.e,pg=getPg(e.id);
+    if(pg&&(drag.mode==='ink'||drag.mode==='shape')){pg.annots.pop();S.undo.pop()}drag=null;drawOverlay(e);updateUI()};
+  v.addEventListener('touchstart',ev=>{
+    if(ev.touches.length!==2||!S.pages.length)return;cancelDrag();
+    const m=mid(ev.touches),el=document.elementFromPoint(m[0],m[1]),pgEl=el&&el.closest&&el.closest('.pg');let anchor=null;
+    if(pgEl){const r=pgEl.getBoundingClientRect();anchor={id:+pgEl.dataset.id,fx:(m[0]-r.left)/r.width,fy:(m[1]-r.top)/r.height}}
+    const br=box.getBoundingClientRect();box.style.transformOrigin=`${m[0]-br.left}px ${m[1]-br.top}px`;
+    PINCH.on={d0:dist(ev.touches),m0:m,m:m,k:1,anchor,fy:(v.scrollTop+m[1]-v.getBoundingClientRect().top)/Math.max(1,v.scrollHeight)};
+  },{passive:true,capture:true});
+  v.addEventListener('touchmove',ev=>{
+    const P=PINCH.on;if(!P||ev.touches.length<2)return;ev.preventDefault();
+    const ns=Math.max(.25,Math.min(5,S.scale*dist(ev.touches)/P.d0));P.k=ns/S.scale;P.m=mid(ev.touches);
+    box.style.transform=`translate(${P.m[0]-P.m0[0]}px,${P.m[1]-P.m0[1]}px) scale(${P.k})`;$('#zVal').textContent=Math.round(ns*100)+'%';
+  },{passive:false,capture:true});
+  const end=ev=>{
+    const P=PINCH.on;if(!P||ev.touches.length>=2)return;PINCH.on=null;box.style.transform='';box.style.transformOrigin='';
+    if(Math.abs(P.k-1)<.02){$('#zVal').textContent=Math.round(S.scale*100)+'%';return}
+    S.scale=Math.max(.25,Math.min(5,S.scale*P.k));relayout(false);
+    const vr=v.getBoundingClientRect();
+    if(P.anchor&&els.get(P.anchor.id)){const r=els.get(P.anchor.id).el.getBoundingClientRect();v.scrollLeft+=r.left+P.anchor.fx*r.width-P.m[0];v.scrollTop+=r.top+P.anchor.fy*r.height-P.m[1]}
+    else v.scrollTop=P.fy*v.scrollHeight-(P.m[1]-vr.top);
+  };
+  v.addEventListener('touchend',end,{capture:true});v.addEventListener('touchcancel',end,{capture:true});
+})();
+
 /* ---------------- phone back button: step back through screens instead of leaving ---------------- */
 const NAV={stack:[],skip:0,fromPop:false,last:0};
 function navWatch(el,close){
