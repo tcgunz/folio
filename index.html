@@ -259,7 +259,7 @@ table.xs tfoot td{font-weight:700;padding:10px 8px;background:#f9fafb}
     <button data-m="lib"><span class="ic" data-i="books"></span>Library</button>
     <hr>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 29</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 30</div>
   </div>
 </div>
 
@@ -1985,7 +1985,7 @@ function readReceipt(text){
   const web=(text.match(/\b(?:www\.)?([a-z0-9-]{2,30})\.(?:com|ca|net|org)\b/i)||[])[1];
   let brand=null,bi=1e9;for(const[n,re,c]of BRANDS){const m=re.exec(text);if(m&&m.index<bi){bi=m.index;brand=[n,c]}}
   if(brand){r.vendor=brand[0];r.category=brand[1]}
-  if(!r.vendor)for(const l of lines.slice(0,8)){const letters=(l.match(/[A-Za-zÀ-ÿ]/g)||[]).length;if(skip.test(l))continue;const c=l.replace(/\s*(#|no\.?|store)\s*\d+.*$/i,'').replace(/\s{2,}/g,' ').trim();if(letters>=4&&letters/l.length>.6&&/[A-Za-zÀ-ÿ]{3,}/.test(c)&&/[aeiouyAEIOUY]/.test(c)&&c.length<=40&&!skip.test(c)){r.vendor=c;break}}
+  if(!r.vendor)for(const l of lines.slice(0,8)){const letters=(l.match(/[A-Za-zÀ-ÿ]/g)||[]).length;if(skip.test(l))continue;const c=l.replace(/^[^A-Za-zÀ-ÿ0-9]+/,'').replace(/\s*(#|no\.?|store)\s*\d+.*$/i,'').replace(/\s{2,}/g,' ').trim();if(letters>=4&&letters/l.length>.6&&/[A-Za-zÀ-ÿ]{3,}/.test(c)&&/[aeiouyAEIOUY]/.test(c)&&c.length<=40&&!skip.test(c)){r.vendor=c;break}}
   if(!brand&&web&&(!r.vendor||web.toLowerCase().includes(r.vendor.toLowerCase().replace(/[^a-z]/g,'').slice(0,4))))r.vendor=r.vendor||web.toUpperCase();
   if(!r.vendor&&web)r.vendor=web.toUpperCase();
   r.date=rcDate(lines.join('\n'));
@@ -1995,9 +1995,21 @@ function readReceipt(text){
     if(/\b(grand\s*total|total|amount\s*due|balance\s*due|montant|à payer|a payer|total\s*due)\b/i.test(l)){let a=rcAmounts(l);if(!a.length&&lines[i+1])a=rcAmounts(lines[i+1]);if(a.length){const v=a[a.length-1];if(total===null||v>=total)total=v}}}
   if(total===null){const all=lines.flatMap(rcAmounts).filter(v=>v<100000);if(all.length)total=Math.max(...all)}
   if(total!==null)r.total=total.toFixed(2);
-  const taxes=[];for(const l of lines){if(/\b(hst|gst|pst|qst|tps|tvq|tvh|sales\s*tax|tax|taxes)\b/i.test(l)&&!/before|excl|tax\s*total|total\s*tax|no\s*tax|tax\s*exempt|tax\s*id|\breg(istration)?\b|#|%\s*off|savings/i.test(l.replace(/\$/g,''))){const a=rcAmounts(l);if(a.length){const v=a[a.length-1];if(v>0&&(!total||v<total))taxes.push(v)}}}
-  if(taxes.length){const uniq=[...new Set(taxes.map(v=>v.toFixed(2)))].map(Number),sum=uniq.reduce((a,b)=>a+b,0),cap=total?total*.16:Infinity;
-    let pick=null;if(sum<=cap)pick=sum;else{const ok=uniq.filter(v=>v<=cap);if(ok.length){const want=total*13/113;pick=ok.reduce((a,b)=>Math.abs(b-want)<Math.abs(a-want)?b:a)}}
+  const taxes=[];let sub=null;
+  for(const l of lines){
+    if(/sub\s*-?\s*total|before\s*tax|pre[\s-]*tax/i.test(l)){const a=rcAmounts(l);if(a.length)sub=a[a.length-1]}
+    if(/\b(hst|gst|pst|qst|tps|tvq|tvh|sales\s*tax|tax|taxes)\b/i.test(l)&&!/before|excl|tax\s*total|total\s*tax|no\s*tax|tax\s*exempt|tax\s*id|\breg(istration)?\b|#|%\s*off|savings|sub\s*-?\s*total/i.test(l.replace(/\$/g,''))){
+      const a=rcAmounts(l);if(a.length){const v=a[a.length-1];if(v>0&&(!total||v<total))taxes.push({v,strong:/sales\s*tax|\bhst\b|\bgst\b|\bpst\b|\bqst\b|\btps\b|\btvq\b|\btvh\b/i.test(l)})}}}
+  if(taxes.length){
+    const near=(a,b)=>Math.abs(a-b)<=Math.max(.03,b*.01);let pick=null;
+    const uniq=[...new Map(taxes.map(t=>[t.v.toFixed(2),t])).values()];
+    // 1) a tax line that equals total − subtotal
+    if(total&&sub&&sub<total){const want=total-sub;const m=uniq.find(t=>near(t.v,want));if(m)pick=m.v;else if(near(uniq.reduce((a,t)=>a+t.v,0),want))pick=want}
+    // 2) a tax line matching a standard Canadian rate (13% HST, 5% GST, 15% HST, 14.975% QC)
+    if(pick===null&&total)for(const rate of[.13,.05,.15,.14975]){const want=total*rate/(1+rate);const m=uniq.find(t=>near(t.v,want));if(m){pick=m.v;break}}
+    // 3) otherwise: clearly-labelled tax lines added together, if believable
+    if(pick===null){const strong=uniq.filter(t=>t.strong),use=strong.length?strong:uniq,sum=use.reduce((a,t)=>a+t.v,0);
+      if(!total||sum<=total*.151)pick=sum;else{const ok=use.filter(t=>t.v<=total*.151);if(ok.length){const want=total*13/113;pick=ok.reduce((a,t)=>Math.abs(t.v-want)<Math.abs(a-want)?t.v:a,ok[0].v)}}}
     if(pick!==null)r.tax=pick.toFixed(2)}
   const PAY=[['Visa',/\bv[i1l!|]sa\b/i],['Mastercard',/master\s*c[a@]rd|\bmc\b/i],['Amex',/amex|american express/i],['Debit',/interac|\bdebit\b|débit/i],['Apple Pay',/apple\s*pay/i],['Google Pay',/google\s*pay/i],['Cash',/\bcash\b|comptant/i]];
   for(const[n,re]of PAY)if(re.test(text)){r.payment=n;break}
@@ -2067,6 +2079,7 @@ function openReceiptDetails(d,isNew){
    <div class="fld"><label>Paid with</label><select id="rcP">${['','Visa','Mastercard','Amex','Debit','Cash','Apple Pay','Google Pay','Gift card','Cheque','E-transfer','Other'].map(p=>`<option ${p===r.payment?'selected':''}>${p}</option>`).join('')}</select></div></div>
    <div class="fld"><label>Category</label><select id="rcC"><option value=""></option>${cats.map(c=>`<option ${c===r.category?'selected':''}>${esc(c)}</option>`).join('')}</select></div>
    ${inp('rcN','Description (what it was for)',r.note)}
+   <button class="link small" id="rcTxtB" style="margin:2px 0 6px">See the text Folio read</button><textarea id="rcTxt" readonly rows="8" style="display:none;font-size:12px;margin-bottom:8px"></textarea>
    <div class="btns"><button class="btn l" id="rcRead">${icon('wand')} Read receipt</button><button class="btn" data-x>${isNew?'Skip':'Cancel'}</button><button class="btn pri" id="rcOk">Save details</button></div>`);
   const setF=(id,v,force)=>{const el=$('#'+id);if(el&&v&&(force||!el.value))el.value=v};
   const fill=(rr,force)=>{setF('rcV',rr.vendor,force);setF('rcD',rr.date,force);setF('rcT',rr.total,force);setF('rcX',rr.tax,force);
@@ -2086,6 +2099,7 @@ function openReceiptDetails(d,isNew){
   ['rcT','rcX'].forEach(id=>$('#'+id).addEventListener('input',hstHint));hstHint();const _fill=fill;
   $('#rcRead').onclick=()=>readNow(true);
   $('#rcView').onclick=()=>viewReceipt(d);
+  $('#rcTxtB').onclick=()=>{const t=$('#rcTxt');const show=t.style.display==='none';t.value=d.text||'(No text yet. Tap Read receipt.)';t.style.display=show?'block':'none';$('#rcTxtB').textContent=show?'Hide the text':'See the text Folio read'};
   if(noText)readNow(false);
   const num=v=>{const x=parseFloat(String(v).replace(/[^0-9.,-]/g,'').replace(',','.'));return isNaN(x)?'':x.toFixed(2)};
   $('#rcV').onchange=()=>{const c=vcatGet($('#rcV').value);if(c&&!$('#rcC').value){const s=$('#rcC');if(![...s.options].some(o=>o.value===c))s.add(new Option(c,c));s.value=c}};
