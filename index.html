@@ -112,6 +112,9 @@ input.fo{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:point
 .grip:active{cursor:grabbing;opacity:1}
 #selbar .grip{color:#fff}
 #zoom .grip{color:var(--muted)}
+#zBadge{position:fixed;left:50%;top:64px;transform:translateX(-50%);background:rgba(21,24,29,.8);color:#fff;font-weight:600;font-size:14px;padding:7px 14px;border-radius:20px;opacity:0;pointer-events:none;transition:opacity .25s;z-index:25}
+#zBadge.on{opacity:1}
+@media (pointer:coarse){#zoom{display:none!important}}
 #toast{position:fixed;left:50%;bottom:150px;transform:translateX(-50%) translateY(20px);background:#15181d;color:#fff;padding:10px 16px;border-radius:12px;font-size:13px;opacity:0;pointer-events:none;transition:.2s;z-index:100;max-width:90vw;text-align:center}
 #toast.on{opacity:1;transform:translateX(-50%)}
 #busy{position:fixed;inset:0;background:rgba(255,255,255,.6);z-index:90;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;font-weight:500;backdrop-filter:blur(2px)}
@@ -209,7 +212,7 @@ input.fo{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:point
     <button data-m="lib"><span class="ic" data-i="books"></span>Library</button>
     <hr>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 19</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 20</div>
   </div>
 </div>
 
@@ -233,6 +236,7 @@ input.fo{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:point
   <div id="selbar"></div>
   <div id="zoom"><button id="zOut" title="Zoom out"><span class="ic" data-i="minus"></span></button><span id="zVal">100%</span><button id="zIn" title="Zoom in"><span class="ic" data-i="plus"></span></button><button id="zFit" title="Fit width"><span class="ic" data-i="fit"></span></button></div>
   <div id="pgInd"></div>
+  <div id="zBadge"></div>
   <div id="props"></div>
   <div id="tools"></div>
 </div>
@@ -755,7 +759,7 @@ function setTool(t){
 }
 function renderProps(){
   const t=S.tool,p=$('#props'),k=CKEY[t];let h='';
-  const hints={hand:'Drag to scroll. Pick a tool below to edit.',select:'Tap a paragraph or item to select it. Drag a box to select several lines or items.',wo:'Drag over anything to cover it with white.',edittext:'Tap a paragraph to edit it, or drag across exactly the lines you want.',place:'Tap on a page to place it.'};
+  const hints={hand:'Drag to scroll, pinch to zoom, double-tap to fit. Pick a tool below to edit.',select:'Tap a paragraph or item to select it. Drag a box to select several lines or items.',wo:'Drag over anything to cover it with white.',edittext:'Tap a paragraph to edit it, or drag across exactly the lines you want.',place:'Tap on a page to place it.'};
   if(t==='rotpage'){const n=S.pages.length;
     p.innerHTML=n?`<span class="hint" style="color:var(--ink);font-weight:600">Page ${S.cur+1} of ${n}</span>
       <button class="btn" data-r="-90" style="height:34px;display:flex;align-items:center;gap:5px">${icon('rotL')}Left</button>
@@ -1841,6 +1845,30 @@ function attachPickers(){
 const _rt=renderTools;renderTools=function(){_rt();attachPickers()};
 
 /* ---------------- init ---------------- */
+/* ---------------- zoom badge + double-tap ---------------- */
+let zbT;
+function showZoomBadge(sc){const b=$('#zBadge');b.textContent=Math.round(sc*100)+'%';b.classList.add('on');clearTimeout(zbT);zbT=setTimeout(()=>b.classList.remove('on'),900)}
+function fitScale(){const v=$('#viewer');let mw=1;S.pages.forEach(pg=>{mw=Math.max(mw,srcPage(pg).getViewport({scale:1,rotation:rot(pg)}).width)});return Math.max(.25,Math.min(2,(v.clientWidth-24)/mw))}
+function zoomAt(ns,x,y){
+  const v=$('#viewer'),el=document.elementFromPoint(x,y),pgEl=el&&el.closest&&el.closest('.pg');let a=null;
+  if(pgEl){const r=pgEl.getBoundingClientRect();a={id:+pgEl.dataset.id,fx:(x-r.left)/r.width,fy:(y-r.top)/r.height}}
+  S.scale=Math.max(.25,Math.min(5,ns));relayout(false);
+  if(a&&els.get(a.id)){const r=els.get(a.id).el.getBoundingClientRect();v.scrollLeft+=r.left+a.fx*r.width-x;v.scrollTop+=r.top+a.fy*r.height-y}
+  showZoomBadge(S.scale);
+}
+(function(){
+  const v=$('#viewer');let down=null,last=null;
+  v.addEventListener('pointerdown',e=>{if(e.pointerType!=='touch'||!e.isPrimary)return;down={x:e.clientX,y:e.clientY,t:Date.now()}},{capture:true});
+  v.addEventListener('pointerup',e=>{
+    if(e.pointerType!=='touch'||!down||PINCH.on||S.tool!=='hand'||!S.pages.length){down=null;return}
+    const moved=Math.hypot(e.clientX-down.x,e.clientY-down.y)>12||Date.now()-down.t>350;down=null;if(moved){last=null;return}
+    const now=Date.now();
+    if(last&&now-last.t<320&&Math.hypot(e.clientX-last.x,e.clientY-last.y)<40){last=null;
+      const f=fitScale();if(Math.abs(S.scale-f)/f<.08)zoomAt(f*2,e.clientX,e.clientY);else zoomAt(f,e.clientX,e.clientY);return}
+    last={t:now,x:e.clientX,y:e.clientY};
+  },{capture:true});
+})();
+
 /* ---------------- pinch to zoom ---------------- */
 const PINCH={on:null};
 (function(){
@@ -1859,7 +1887,7 @@ const PINCH={on:null};
   v.addEventListener('touchmove',ev=>{
     const P=PINCH.on;if(!P||ev.touches.length<2)return;ev.preventDefault();
     const ns=Math.max(.25,Math.min(5,S.scale*dist(ev.touches)/P.d0));P.k=ns/S.scale;P.m=mid(ev.touches);
-    box.style.transform=`translate(${P.m[0]-P.m0[0]}px,${P.m[1]-P.m0[1]}px) scale(${P.k})`;$('#zVal').textContent=Math.round(ns*100)+'%';
+    box.style.transform=`translate(${P.m[0]-P.m0[0]}px,${P.m[1]-P.m0[1]}px) scale(${P.k})`;$('#zVal').textContent=Math.round(ns*100)+'%';showZoomBadge(ns);
   },{passive:false,capture:true});
   const end=ev=>{
     const P=PINCH.on;if(!P||ev.touches.length>=2)return;PINCH.on=null;box.style.transform='';box.style.transformOrigin='';
