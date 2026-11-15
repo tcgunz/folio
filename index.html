@@ -268,7 +268,7 @@ table.xs tfoot td{font-weight:700;padding:10px 8px;background:#f9fafb}
     <button data-m="rctoggle" id="mRc"><span class="ic" data-i="grid"></span><span id="mRcL">Hide Receipts &amp; expenses</span></button>
     <hr>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 47</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 48</div>
   </div>
 </div>
 
@@ -1725,7 +1725,7 @@ function openScanSave(mode){
    ${mode==='save'?folderPickerHTML(SC.mode==='receipt'?(LIB.folders.find(isReceiptFolder)||'Receipts'):(lsGet('folio.lastFolder.scan')&&LIB.folders.includes(lsGet('folio.lastFolder.scan'))&&!isReceiptFolder(lsGet('folio.lastFolder.scan'))?lsGet('folio.lastFolder.scan'):'Documents'),true)+`<label class="row" style="gap:10px;margin:8px 0 0"><input type="checkbox" id="ssDl" ${lsGet('folio.dl.scan')!=='0'?'checked':''} style="width:18px;height:18px;accent-color:var(--acc)"><span>Also download to this phone</span></label>`:''}
    <p class="small" style="margin:12px 0 6px">File size</p>
    <div class="chips" id="ssQ" style="padding:0;flex-wrap:wrap">${[['small','Small'],['std','Standard'],['high','High']].map(([k,l])=>`<button data-q="${k}" class="btn" style="height:36px">${l}</button>`).join('')}</div>
-   <p class="small" id="ssQL" style="margin:6px 0 0"></p>
+   <p class="small" id="ssQL" style="margin:6px 0 0"></p><p class="small" style="margin:2px 0 0;opacity:.75">Sizes are estimates for these pages in the look shown.</p>
    <p class="small" style="margin:12px 0 6px">Look</p>
    <div class="chips" id="ssLook" style="padding:0;flex-wrap:wrap">${[['keep','As shown'],['auto','Colour'],['gray','Grayscale'],['bw','Black & white']].map(([k,l])=>`<button data-l="${k}" class="btn" style="height:36px">${l}</button>`).join('')}</div>
    <div id="ssPrevBox" style="margin-top:12px;background:#eef0f3;border-radius:12px;height:230px;display:grid;place-items:center;overflow:hidden;cursor:zoom-in;position:relative"><img id="ssPrev" alt="Preview" style="max-width:100%;max-height:220px;box-shadow:0 2px 10px rgba(0,0,0,.2)"><span style="position:absolute;right:8px;bottom:8px;background:rgba(21,24,29,.75);color:#fff;font-size:12px;padding:5px 10px;border-radius:14px;display:flex;align-items:center;gap:5px">${icon('plus')}Tap to zoom</span></div>
@@ -1736,6 +1736,14 @@ function openScanSave(mode){
   const isRc=()=>{const f=$('#fpSel')?folderPickerValue():'';return f?isReceiptFolder(f):SC.mode==='receipt'};
   const qDef=()=>isRc()?(lsGet('folio.q.rc')||'high'):(lsGet('folio.q.doc')||'std');let qual=qDef(),qTouched=false;const QD={small:'Fast to send · about 150 DPI on a letter page (more on receipts)',std:'Sharp and readable · about 230 DPI on a letter page, small print on receipts stays clear',high:'Full camera detail for the finest print · largest files'};
   const tq=()=>{m.querySelectorAll('#ssQ button').forEach(b=>{const on=b.dataset.q===qual;b.style.background=on?'var(--acc)':'#fff';b.style.color=on?'#fff':'';b.style.borderColor=on?'var(--acc)':''});$('#ssQL').textContent=QD[qual]};tq();
+  {const NM={small:'Small',std:'Standard',high:'High'};m.querySelectorAll('#ssQ button').forEach(b=>b.textContent=NM[b.dataset.q]+' · …');
+   (async()=>{const z={small:0,std:0,high:0},n=SC.pages.length;
+     for(const pg of SC.pages){z.high+=pg.out.length*.75;const im=await imgFrom(pg.out);
+       z.small+=downscaleArea(im,2.2).toDataURL('image/jpeg',.75).length*.75;await tick();
+       z.std+=downscaleArea(im,5).toDataURL('image/jpeg',.82).length*.75;await tick();if(!$('#ssQ'))return}
+     const fmt=b=>{b+=3000*n;return b>=1048576?(b/1048576).toFixed(1)+' MB':Math.max(1,Math.round(b/1024))+' KB'};
+     m.querySelectorAll('#ssQ button').forEach(b=>b.textContent=`${NM[b.dataset.q]} · ~${fmt(z[b.dataset.q])}`);
+     const L=$('#ssQL');if(L)L.dataset.est='1'})()}
   m.querySelectorAll('#ssQ button').forEach(b=>b.onclick=()=>{qual=b.dataset.q;qTouched=true;lsSet(isRc()?'folio.q.rc':'folio.q.doc',qual);tq()});
   const fs=$('#fpSel');if(fs)fs.addEventListener('change',()=>{if(!qTouched){qual=qDef();tq()}});
   const tg=()=>m.querySelectorAll('#ssLook button').forEach(b=>{const on=b.dataset.l===look;b.style.background=on?'var(--acc)':'#fff';b.style.color=on?'#fff':'';b.style.borderColor=on?'var(--acc)':''});tg();
