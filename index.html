@@ -184,6 +184,15 @@ table.xs tfoot td{font-weight:700;padding:10px 8px;background:#f9fafb}
 .xsum div{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #f1f3f5;font-size:13px}
 #lib{position:fixed;inset:0;z-index:45;background:var(--bg);color:var(--ink);display:none;flex-direction:column}
 #lib.on{display:flex}
+#lib .lsel{display:none!important}#lib.selecting .lsel{display:flex!important}#lib.selecting .lnorm{display:none!important}
+#libSelMark{display:none}
+#lib.selecting #libChips,#lib.selecting #libFolderTools{opacity:.45;pointer-events:none}
+#lib .lsel .btn{flex:1}
+#lib.selecting .lmore{display:none}
+.lcard{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+#lib.selecting .lcard::after{content:'';position:absolute;top:10px;right:10px;width:24px;height:24px;border-radius:50%;border:2px solid #cbd2d9;background:#fff}
+#lib.selecting .lcard.sel{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc)}
+#lib.selecting .lcard.sel::after{background:var(--acc) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12l5 5L20 7'/%3E%3C/svg%3E") center/16px no-repeat;border-color:var(--acc)}
 #lib .sh{background:#fff;border-bottom:1px solid var(--line)}
 #lib .sh .tb:hover{background:#f1f3f5}
 #libSearch{width:100%;padding:11px 14px;border:1px solid var(--line);border-radius:12px;font:inherit;font-size:16px;background:#fff}
@@ -250,7 +259,7 @@ table.xs tfoot td{font-weight:700;padding:10px 8px;background:#f9fafb}
     <button data-m="lib"><span class="ic" data-i="books"></span>Library</button>
     <hr>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 27</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 28</div>
   </div>
 </div>
 
@@ -288,12 +297,15 @@ table.xs tfoot td{font-weight:700;padding:10px 8px;background:#f9fafb}
   <div class="lvBot"><button id="lvThumb" class="lvth"><img id="lvImg" alt=""><span id="lvN"></span></button><button id="lvShut" class="shutter" aria-label="Capture"></button><button class="pill" id="lvDone">Done</button></div>
 </div>
 <div id="lib">
-  <div class="sh"><button class="tb" id="libBack"><span class="ic" data-i="back"></span></button><b>Library</b><span class="sp"></span></div>
+  <div class="sh lnorm"><button class="tb" id="libBack"><span class="ic" data-i="back"></span></button><b>Library</b><span class="sp"></span><span class="small" style="padding-right:10px">Press and hold to select</span></div>
+  <div class="sh lsel"><button class="tb" id="libSelX"><span class="ic" data-i="x"></span></button><b id="libSelN">Tap documents to select</b><span class="sp"></span><button class="btn" id="libSelAll" style="height:36px">Select all</button></div>
+  <div id="libSelMark"></div>
   <div style="padding:10px 12px 0"><input type="search" id="libSearch" placeholder="Search names and text…"></div>
   <div class="chips" id="libChips"></div>
   <div id="libFolderTools" style="display:none;gap:14px;padding:6px 14px 0"><button class="link" id="libRenameF">Rename folder</button><button class="link" style="color:var(--danger)" id="libDeleteF">Delete folder</button></div>
   <div id="libGrid" style="flex:1;overflow:auto;padding:12px"></div>
-  <div class="sf" style="border-top:1px solid var(--line);align-items:center"><span class="small" id="libUse" style="flex:1"></span><button class="btn pri" id="libSheet">Spreadsheet</button><button class="btn" id="libCsv" style="display:none">Export CSV</button><button class="btn" id="libRestoreB">Restore</button><button class="btn" id="libBackup">Back up</button></div>
+  <div class="sf lsel" id="libSelActs" style="border-top:1px solid var(--line);background:#fff"><button class="btn" id="libSelMove">Move</button><button class="btn" id="libSelMerge">Combine</button><button class="btn" id="libSelDl">Download</button><button class="btn red" id="libSelDel">Delete</button></div>
+  <div class="sf lnorm" style="border-top:1px solid var(--line);align-items:center"><span class="small" id="libUse" style="flex:1"></span><button class="btn pri" id="libSheet">Spreadsheet</button><button class="btn" id="libCsv" style="display:none">Export CSV</button><button class="btn" id="libRestoreB">Restore</button><button class="btn" id="libBackup">Back up</button></div>
 </div>
 <div id="sheet">
   <div class="sh"><button class="tb" id="shBack"><span class="ic" data-i="back"></span></button><b id="shTitle">Spreadsheet</b><span class="sp"></span><button class="btn" id="shCsv" style="height:36px">Export CSV</button></div>
@@ -1822,7 +1834,7 @@ async function libRestore(file){
 }
 /* library screen */
 async function openLibrary(){closeDrawers();$('#lib').classList.add('on');await libFolders();renderLib()}
-$('#libBack').onclick=()=>$('#lib').classList.remove('on');
+$('#libBack').onclick=()=>{LIB.sel=null;$('#lib').classList.remove('on')};
 $('#libSearch').oninput=e=>{LIB.q=e.target.value;renderLibGrid()};
 async function renderLib(){
   try{LIB.docs=await libAll()}catch(e){LIB.docs=[];$('#libGrid').innerHTML='<p class="small">Storage isn’t available in this browser.</p>';return}
@@ -1840,6 +1852,7 @@ function renderLibGrid(){
   const G=$('#libGrid');
   if(!list.length){G.innerHTML=`<div class="sempty" style="color:var(--ink)"><div class="ic" style="background:var(--acc2);color:var(--acc)">${icon('folder')}</div><h2>${q?'No matches':'Nothing here yet'}</h2><p style="color:var(--muted)">${q?'Try a different word. Search looks inside scanned text too.':'When you save a PDF or a scan, choose a folder and it will appear here.'}</p></div>`;return}
   const dt=t=>new Date(t).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'});
+  setTimeout(()=>{if(LIB.sel)libSelUpdate()},0);
   G.innerHTML=`<div class="lgrid">${list.map(d=>`<div class="lcard" data-id="${d.id}"><button class="lmore" data-more="${d.id}" aria-label="More">⋯</button><div class="lth">${d.thumb?`<img src="${d.thumb}" alt="">`:icon('filePlus')}</div><b>${esc(d.receipt&&d.receipt.vendor?d.receipt.vendor:d.name)}</b>${d.receipt&&d.receipt.total?`<span class="lamt">$${esc(d.receipt.total)}${d.receipt.category?' · '+esc(d.receipt.category):''}</span>`:''}<span>${esc(d.folder)} · ${d.receipt&&d.receipt.date?esc(d.receipt.date):dt(d.updated)}</span></div>`).join('')}</div>`;
 }
 $('#libChips').addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;
@@ -1880,6 +1893,45 @@ async function libItemMenu(id){
   let armed=false;$('#liDel').onclick=async()=>{if(!armed){armed=true;$('#liDel').innerHTML=icon('trash')+'Tap again to delete';return}await libDel(d.id);if(S.libId===d.id)S.libId=null;closeModal();toast('Deleted');renderLib()};
 }
 $('#libBackup').onclick=libBackup;
+/* ---------------- Library: press and hold to select several ---------------- */
+LIB.sel=null;
+function libSelUpdate(){
+  const on=!!LIB.sel;$('#lib').classList.toggle('selecting',on);$('#libSelMark').classList.toggle('on',on);
+  if(on){const n=LIB.sel.size;$('#libSelN').textContent=n?`${n} selected`:'Tap documents to select';document.querySelectorAll('#libSelActs button').forEach(b=>b.disabled=!n)}
+  document.querySelectorAll('.lcard').forEach(c=>c.classList.toggle('sel',!!LIB.sel&&LIB.sel.has(c.dataset.id)));
+}
+function libSelStart(id){LIB.sel=new Set(id?[id]:[]);try{navigator.vibrate&&navigator.vibrate(25)}catch(e){}libSelUpdate()}
+function libSelEnd(){LIB.sel=null;libSelUpdate()}
+function libSelDocs(){const order=[...document.querySelectorAll('.lcard')].map(c=>c.dataset.id);return order.filter(id=>LIB.sel.has(id)).map(id=>LIB.docs.find(d=>d.id===id)).filter(Boolean)}
+(function(){
+  const G=$('#libGrid');let t=null,start=null,fired=false;
+  G.addEventListener('pointerdown',e=>{const c=e.target.closest('.lcard');if(!c||e.target.closest('[data-more]'))return;fired=false;start=[e.clientX,e.clientY];
+    clearTimeout(t);t=setTimeout(()=>{fired=true;if(!LIB.sel)libSelStart(c.dataset.id);else{LIB.sel.add(c.dataset.id);libSelUpdate()}},480)});
+  G.addEventListener('pointermove',e=>{if(start&&Math.hypot(e.clientX-start[0],e.clientY-start[1])>10)clearTimeout(t)});
+  ['pointerup','pointercancel','pointerleave'].forEach(k=>G.addEventListener(k,()=>clearTimeout(t)));
+  G.addEventListener('contextmenu',e=>{if(e.target.closest('.lcard'))e.preventDefault()});
+  G.addEventListener('click',e=>{
+    if(fired){fired=false;e.stopPropagation();e.preventDefault();return}
+    if(!LIB.sel)return;const c=e.target.closest('.lcard');e.stopPropagation();e.preventDefault();if(!c)return;
+    const id=c.dataset.id;LIB.sel.has(id)?LIB.sel.delete(id):LIB.sel.add(id);libSelUpdate()},true);
+})();
+$('#libSelX').onclick=libSelEnd;
+$('#libSelAll').onclick=()=>{const ids=[...document.querySelectorAll('.lcard')].map(c=>c.dataset.id);const all=ids.every(id=>LIB.sel.has(id));LIB.sel=new Set(all?[]:ids);libSelUpdate()};
+$('#libSelDel').onclick=()=>{const ds=libSelDocs();if(!ds.length)return;
+  openModal(`<h3>Delete ${ds.length} document${ds.length>1?'s':''}?</h3><p class="small">This can't be undone. Tip: use <b>Back up</b> first if you might want them later.</p><div class="btns"><button class="btn" data-x>Cancel</button><button class="btn red" id="msDel">Delete</button></div>`);
+  $('#msDel').onclick=async()=>{closeModal();busy('Deleting…');for(const d of ds){await libDel(d.id);if(S.libId===d.id)S.libId=null}unbusy();toast(`Deleted ${ds.length}`);libSelEnd();renderLib()}};
+$('#libSelMove').onclick=()=>{const ds=libSelDocs();if(!ds.length)return;
+  openModal(`<h3>Move ${ds.length} document${ds.length>1?'s':''}</h3>${folderPickerHTML(LIB.folder||LIB.folders[0],false)}<div class="btns"><button class="btn" data-x>Cancel</button><button class="btn pri" id="msMove">Move</button></div>`);folderPickerWire();
+  $('#msMove').onclick=async()=>{const f=folderPickerValue();if(!f)return;closeModal();for(const d of ds){d.folder=f;await libPut(d)}if(!LIB.folders.includes(f))await libSetFolders([...LIB.folders,f]);toast(`Moved to ${f}`);libSelEnd();renderLib()}};
+$('#libSelDl').onclick=async()=>{const ds=libSelDocs();if(!ds.length)return;
+  if(ds.length===1){offerDownload(ds[0].name+'.pdf',new Uint8Array(await ds[0].blob.arrayBuffer()));return}
+  busy('Packing…');const used=new Set(),files=[];for(const d of ds){let fn=d.name.replace(/[\\/:*?"<>|]/g,'_')+'.pdf',k=2;while(used.has(fn))fn=d.name+` (${k++}).pdf`;used.add(fn);files.push({name:fn,data:new Uint8Array(await d.blob.arrayBuffer())})}
+  unbusy();offerDownload(`Folio ${ds.length} documents.zip`,makeZip(files),'application/zip')};
+$('#libSelMerge').onclick=async()=>{const ds=libSelDocs();if(ds.length<2){toast('Select two or more to combine');return}
+  busy('Combining…');try{const out=await PDFLib.PDFDocument.create();for(const d of ds){const src=await PDFLib.PDFDocument.load(await d.blob.arrayBuffer(),{ignoreEncryption:true});(await out.copyPages(src,src.getPageIndices())).forEach(p=>out.addPage(p))}
+    const b=await out.save();resetDoc();S.pages=await addSource(b,'combined');S.name=`Combined ${ds.length} documents.pdf`;fitWidth(false);relayout(false);libSelEnd();$('#lib').classList.remove('on');unbusy();toast(`Combined ${ds.length} documents. Save it to keep it.`,4000)}
+  catch(e){console.error(e);unbusy();toast('Could not combine those')}};
+
 $('#fRestore').onchange=e=>{const f=e.files&&e.files[0];if(f)libRestore(f)};
 
 /* well-known Canadian stores → name + usual category */
@@ -2240,6 +2292,7 @@ function leaveDoc(){
 navWatch($('#menu'),()=>$('#menu').classList.remove('on'));
 document.querySelectorAll('.drawer').forEach(d=>navWatch(d,()=>d.classList.remove('on')));
 navWatch($('#sheet'),()=>{$('#sheet').classList.remove('on');renderLib()});
+navWatch($('#libSelMark'),()=>libSelEnd());
 navWatch($('#lib'),()=>$('#lib').classList.remove('on'));
 navWatch($('#scan'),()=>$('#scan').classList.remove('on'));
 navWatch($('#crop'),()=>{$('#crop').classList.remove('on')});
