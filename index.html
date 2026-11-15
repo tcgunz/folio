@@ -336,7 +336,7 @@ body[data-theme=rose]{--acc:#be185d;--accd:#9d174d;--acc2:#fce7f3;--bg:#faf4f7;-
     <button data-m="rctoggle" id="mRc"><span class="ic" data-i="grid"></span><span id="mRcL">Hide Receipts &amp; expenses</span></button>
     <hr>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 54</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 55</div>
   </div>
 </div>
 
@@ -2364,7 +2364,7 @@ function buildXlsx(sheets){
       const ref=xlsxCol(ci)+(ri+1),st=c.s?` s="${c.s}"`:'';
       if(c.t==='n')return `<c r="${ref}"${st}><v>${Number(c.v)}</v></c>`;
       if(c.t==='d'){const[y,m,d]=String(c.v).split('-').map(Number);const serial=(Date.UTC(y,m-1,d)-Date.UTC(1899,11,30))/864e5;return `<c r="${ref}" s="${c.s||4}"><v>${serial}</v></c>`}
-      if(c.t==='f')return `<c r="${ref}"${st}><f>${xesc(c.v)}</f><v>${c.c!=null?Number(c.c):0}</v></c>`;
+      if(c.t==='f')return typeof c.c==='string'?`<c r="${ref}" t="str"${st}><f>${xesc(c.v)}</f><v>${xesc(c.c)}</v></c>`:`<c r="${ref}"${st}><f>${xesc(c.v)}</f><v>${c.c!=null?Number(c.c):0}</v></c>`;
       return `<c r="${ref}" t="inlineStr"${st}><is><t xml:space="preserve">${xesc(c.v)}</t></is></c>`}).join('')}</row>`).join('');
     const cols=sh.cols?`<cols>${sh.cols.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join('')}</cols>`:'';
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0">${sh.freeze?'<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>':''}</sheetView></sheetViews>${cols}<sheetData>${rows}</sheetData></worksheet>`};
@@ -2372,7 +2372,7 @@ function buildXlsx(sheets){
   files.push({name:'_rels/.rels',data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`});
   files.push({name:'xl/workbook.xml',data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${sheets.map((sh,i)=>`<sheet name="${xesc(sh.name.slice(0,31))}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join('')}</sheets><calcPr calcId="0" fullCalcOnLoad="1"/></workbook>`});
   files.push({name:'xl/_rels/workbook.xml.rels',data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((_,i)=>`<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join('')}<Relationship Id="rId${sheets.length+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`});
-  files.push({name:'xl/styles.xml',data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="yyyy-mm-dd"/></numFmts><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE6F4F2"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="6"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="4" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="4" fontId="1" fillId="2" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`});
+  files.push({name:'xl/styles.xml',data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="yyyy-mm-dd"/></numFmts><fonts count="3"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font><font><u/><sz val="11"/><color rgb="FF1D4ED8"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE6F4F2"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="7"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="4" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="4" fontId="1" fillId="2" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`});
   sheets.forEach((sh,i)=>files.push({name:`xl/worksheets/sheet${i+1}.xml`,data:sheetXml(sh)}));
   return makeZip(files.map(f=>({name:f.name,data:enc.encode(f.data)})));
 }
@@ -2381,27 +2381,51 @@ function exportList(listIn){
   if(q&&!listIn)list=list.filter(d=>libSearchText(d).includes(q));
   list.sort((a,b)=>((a.receipt&&a.receipt.date)||'9999').localeCompare((b.receipt&&b.receipt.date)||'9999')||a.created-b.created);return list;
 }
-function exportXlsx(listIn,byMonth){
-  const list=exportList(listIn);if(!list.length){toast('Nothing to export in this view');return}
+/* ---- receipt line items: the purchased items between the header and the subtotal ---- */
+function receiptItems(text){
+  const lines=(text||'').split(/\n+/).map(l=>l.trim()).filter(Boolean);if(!lines.length)return[];
+  const END=/s\s?u\s?b\s*-?\s*(tota[l1]|ttl)|s\s*\/\s*total|sous[\s-]*total|^\s*(grand\s*)?tota[l1]\b|tota[l1]\s*(after|due|amount|cad)|amount\s*due|balance\s*due|\bhst\b|\bgst\b|\bpst\b|sales\s*tax|item\s*count|#\s*of\s*items|net\s*total/i;
+  const SKIP=/receipt|invoice\s*(no|#|number|date)|order\s*(no|#|number|date)|\bdate\b|\btime\b|\btel\b|phone|fax|www|http|\S+@\S+\.\w|cashier|server|\btable\b|guest|store\s*#|trans(action)?\s*(#|no|type|record)|\btrn\b|ref\s*#|\bauth|appr(oved|\s*code)|card\s*(no|number|type|entry|#)|credit\s*card|debit\s*card|\bvisa\b|master\s*card|amex|interac|tender|change\s*due|\bcash\b|balance|batch|terminal|merchant|account|acct|po\s*number|remit|ship\s*to|bill\s*to|page\s*\d|thank|welcome|survey|return|refund|points|optimum|reward|loyalty|gst\s*#|hst\s*#|\breg\b|\bbn\b|business\s*no|^\(?\d{3}\)?[\s-]?\d{3}[\s-]?\d{4}/i;
+  const DISC=/discount|saving|coupon|rebate|instant\s*off|\boff\b/i;
+  let end=lines.findIndex(l=>END.test(l)&&rcAmounts(l).length>0&&!/#\s*\d{6,}|\d{9}\s*RT/i.test(l));if(end<0)end=lines.length;
+  const items=[];let pend=null;
+  for(let i=0;i<end;i++){const l=lines[i];
+    if(DISC.test(l)&&rcAmounts(l).length){const v=rcAmounts(l).pop();if(v>0&&v<100000)items.push({desc:l.replace(/-?\$?\s?\d+[.,]\d{2}.*$/,'').trim()||'Discount',amount:-v});pend=null;continue}
+    if(SKIP.test(l)||/[A-Z]\d[A-Z][\s-]?\d[A-Z]\d/.test(l)){pend=null;continue}
+    const a=rcAmounts(l),letters=(l.match(/[A-Za-zÀ-ÿ]/g)||[]).length;
+    if(!a.length){if(letters>=3&&letters/l.length>.4)pend=l;else if(letters>=3)pend=null;continue}
+    const amt=a[a.length-1];if(!(amt>0)||amt>=100000){pend=null;continue}
+    let desc=l.replace(/\$?\s?-?\d{1,3}(?:[,\s]\d{3})*[.,]\d{2}(?!\d)\s*[A-Z]{0,2}\b/g,' ').replace(/\(\s*\d+\s*@[^)]*\)/g,' ').replace(/\b\d+\s*@\s*/g,' ').replace(/\s{2,}/g,' ').replace(/(\s+\d{1,3}){1,4}\s*$/,'').replace(/[\s:.\-]+$/,'').trim();
+    const dl=(desc.match(/[A-Za-zÀ-ÿ]/g)||[]).length;
+    if(dl<3&&pend){desc=pend}else if(dl<3){continue}
+    items.push({desc,amount:amt});
+    pend=null;
+  }
+  return items.slice(0,80);
+}
+function exportXlsx(listIn,byMonth,opts){
+  opts=opts||{};const list=exportList(listIn);if(!list.length){toast('Nothing to export in this view');return}
   if(!list.some(d=>d.receipt)){toast('No receipt details yet. Tap a receipt to fill them in first.',4500);return}
-  const C=REGION.cur,H=['Date','Month','Store','Description','Category','Paid with',`Subtotal (${C})`,`Tax (${C})`,`Tip (${C})`,`Total (${C})`,'Folder','Document'];
-  const COLS=[12,9,24,28,22,12,13,12,11,13,14,24],KEY={G:'subtotal',H:'tax',I:'tip',J:'total'};
+  const C=REGION.cur,pad=n=>String(n).padStart(3,'0'),safe=t=>String(t||'').replace(/[\\/:*?"<>|]+/g,' ').replace(/\s+/g,' ').trim().slice(0,60);
+  const ref={},fileOf={};list.forEach((d,i)=>{ref[d.id]='R'+pad(i+1);const r=d.receipt||{};fileOf[d.id]=`Receipts/${ref[d.id]} ${r.date||'no date'} ${safe(r.vendor||d.name)}.pdf`});
+  const H=['Receipt #','Date','Month','Store','Description','Category','Paid with',`Subtotal (${C})`,`Tax (${C})`,`Tip (${C})`,`Total (${C})`,'Folder','Receipt file'];
+  const COLS=[10,12,9,24,28,22,12,13,12,11,13,14,40],KEY={H:'subtotal',I:'tax',J:'tip',K:'total'};
   const num=v=>{const x=parseFloat(v);return isNaN(x)?'':{v:+x.toFixed(2),t:'n',s:1}};
   const val=(d,k)=>parseFloat((d.receipt||{})[k])||0;
-  const rowOf=d=>{const r=d.receipt||{};return[/^\d{4}-\d{2}-\d{2}$/.test(r.date||'')?{v:r.date,t:'d'}:(r.date||''),(r.date||'').slice(0,7),r.vendor||'',r.note||'',r.category||'',r.payment||'',num(r.subtotal),num(r.tax),num(r.tip),num(r.total),d.folder,d.name]};
+  const fileCell=d=>opts.files?{v:`HYPERLINK("${fileOf[d.id].replace(/"/g,'')}","${fileOf[d.id].slice(9).replace(/"/g,'')}")`,t:'f',c:fileOf[d.id].slice(9),s:6}:d.name;
+  const rowOf=d=>{const r=d.receipt||{};return[ref[d.id],/^\d{4}-\d{2}-\d{2}$/.test(r.date||'')?{v:r.date,t:'d'}:(r.date||''),(r.date||'').slice(0,7),r.vendor||'',r.note||'',r.category||'',r.payment||'',num(r.subtotal),num(r.tax),num(r.tip),num(r.total),d.folder,fileCell(d)]};
   const tableSheet=(name,docs)=>{const rows=[H.map(h=>({v:h,s:2})),...docs.map(rowOf)],n=rows.length;
     const sum=col=>({v:`SUM(${col}2:${col}${Math.max(2,n)})`,t:'f',s:3,c:+docs.reduce((a,d)=>a+val(d,KEY[col]),0).toFixed(2)});
-    rows.push([{v:'TOTAL',s:2},{v:'',s:2},{v:`${docs.length} receipt${docs.length===1?'':'s'}`,s:2},{v:'',s:2},{v:'',s:2},{v:'',s:2},sum('G'),sum('H'),sum('I'),sum('J'),{v:'',s:2},{v:'',s:2}]);
+    rows.push([{v:'TOTAL',s:2},{v:'',s:2},{v:'',s:2},{v:`${docs.length} receipt${docs.length===1?'':'s'}`,s:2},{v:'',s:2},{v:'',s:2},{v:'',s:2},sum('H'),sum('I'),sum('J'),sum('K'),{v:'',s:2},{v:'',s:2}]);
     return{name,freeze:true,cols:COLS,rows,totalRow:rows.length}};
   const mName=m=>{if(!m)return 'No date';const[y,mo]=m.split('-');return new Date(+y,+mo-1,1).toLocaleDateString('en-CA',{month:'short',year:'numeric'}).replace('.','')};
   const months={};for(const d of list){const m=((d.receipt||{}).date||'').slice(0,7);(months[m]=months[m]||[]).push(d)}
   const mKeys=Object.keys(months).sort((a,b)=>(a||'9999').localeCompare(b||'9999'));
   const sheets=[],q=n=>`'${n.replace(/'/g,"''")}'`;
-  // Summary first
   const sumRows=[[{v:'Totals by month',s:5}],['Month','Receipts',`Subtotal (${C})`,`Tax (${C})`,`Tip (${C})`,`Total (${C})`].map(h=>({v:h,s:2}))];
   const monthSheets=byMonth?mKeys.map(m=>tableSheet(mName(m),months[m])):[];
   mKeys.forEach((m,i)=>{const docs=months[m],tot=k=>+docs.reduce((a,d)=>a+val(d,k),0).toFixed(2);
-    if(byMonth){const sh=monthSheets[i],ref=c=>({v:`${q(sh.name)}!${c}${sh.totalRow}`,t:'f',s:1,c:tot(KEY[c])});sumRows.push([mName(m),docs.length,ref('G'),ref('H'),ref('I'),ref('J')])}
+    if(byMonth){const sh=monthSheets[i],refc=c=>({v:`${q(sh.name)}!${c}${sh.totalRow}`,t:'f',s:1,c:tot(KEY[c])});sumRows.push([mName(m),docs.length,refc('H'),refc('I'),refc('J'),refc('K')])}
     else sumRows.push([mName(m),docs.length,num(tot('subtotal')),num(tot('tax')),num(tot('tip')),num(tot('total'))])});
   const last=sumRows.length,GK={C:'subtotal',D:'tax',E:'tip',F:'total'},gs=c=>({v:`SUM(${c}3:${c}${last})`,t:'f',s:3,c:+list.reduce((a,d)=>a+val(d,GK[c]),0).toFixed(2)});
   sumRows.push([{v:'Grand total',s:2},{v:`SUM(B3:B${last})`,t:'f',s:2,c:list.length},gs('C'),gs('D'),gs('E'),gs('F')]);
@@ -2410,17 +2434,32 @@ function exportXlsx(listIn,byMonth){
   sheets.push({name:'Summary',cols:[22,10,14,12,11,14],rows:sumRows});
   sheets.push(...monthSheets);
   sheets.push(tableSheet(byMonth?'All receipts':'Receipts',list));
-  const bytes=buildXlsx(sheets);const t=new Date(),tt=list.reduce((a,d)=>a+val(d,'total'),0);
-  offerDownload(`${LIB.folder||'Library'} ${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}.xlsx`,bytes,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  toast(`Exported ${list.length} receipt${list.length>1?'s':''}${byMonth?` in ${mKeys.length} month tab${mKeys.length>1?'s':''}`:''} · total ${fmtMoney(tt)}`,4500);
+  let itemCount=0;
+  if(opts.items){const IR=[['Receipt #','Date','Store','Item',`Amount (${C})`,'Check'].map(h=>({v:h,s:2}))];
+    for(const d of list){const r=d.receipt||{},its=receiptItems(d.text||'');
+      if(!its.length){IR.push([ref[d.id],/^\d{4}-\d{2}-\d{2}$/.test(r.date||'')?{v:r.date,t:'d'}:(r.date||''),r.vendor||d.name,{v:'(items could not be read, see the receipt)',s:0},'','']);IR.push([]);continue}
+      its.forEach(it=>{IR.push([ref[d.id],/^\d{4}-\d{2}-\d{2}$/.test(r.date||'')?{v:r.date,t:'d'}:(r.date||''),r.vendor||d.name,it.desc,{v:+it.amount.toFixed(2),t:'n',s:1},''])});itemCount+=its.length;
+      const sum=its.reduce((a,b)=>a+b.amount,0),sub=parseFloat(r.subtotal),ok=!isNaN(sub)&&Math.abs(sum-sub)<=.05;
+      IR.push(['','','',{v:`Items total${isNaN(sub)?'':` (receipt subtotal ${sub.toFixed(2)})`}`,s:5},{v:+sum.toFixed(2),t:'n',s:3},{v:isNaN(sub)?'':ok?'✓ matches':'Check',s:5}]);IR.push([])}
+    sheets.push({name:'Line items',freeze:true,cols:[10,12,24,44,14,12],rows:IR})}
+  const xbytes=buildXlsx(sheets),t=new Date(),stamp=`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`,base=`${LIB.folder||'Library'} ${stamp}`,tt=list.reduce((a,d)=>a+val(d,'total'),0);
+  const done=()=>toast(`Exported ${list.length} receipt${list.length>1?'s':''}${byMonth?` in ${mKeys.length} month tab${mKeys.length>1?'s':''}`:''}${opts.items?` · ${itemCount} line items`:''} · total ${fmtMoney(tt)}`,5000);
+  if(!opts.files){offerDownload(base+'.xlsx',xbytes,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');done();return}
+  (async()=>{busy('Packing receipts…');try{const files=[{name:base+'.xlsx',data:xbytes}];
+      for(const d of list){if(d.blob)files.push({name:fileOf[d.id],data:new Uint8Array(await d.blob.arrayBuffer())})}
+      const z=makeZip(files);unbusy();offerDownload(base+'.zip',z,'application/zip');done()}
+    catch(e){console.error(e);unbusy();toast('Could not pack the receipts')}})();
 }
 function openExport(listIn){
   openModal(`<h3>Export</h3><p class="small" style="margin-top:-6px">Choose a file type. Both open in Excel and Google Sheets.</p>
    <button class="big" id="exX" style="display:flex;gap:12px;align-items:center;width:100%;padding:14px;border:1px solid var(--line);border-radius:12px;background:#fff;text-align:left;margin-bottom:10px"><span style="font-size:22px">📊</span><span><b>Excel (.xlsx)</b> · recommended<br><small style="color:var(--muted)">Amounts to 2 decimals, real dates, totals and a summary sheet</small></span></button>
    <button class="big" id="exC" style="display:flex;gap:12px;align-items:center;width:100%;padding:14px;border:1px solid var(--line);border-radius:12px;background:#fff;text-align:left"><span style="font-size:22px">📄</span><span><b>CSV</b><br><small style="color:var(--muted)">Plain text, for importing into other software</small></span></button>
-   <label class="row" style="gap:10px;margin-top:12px"><input type="checkbox" id="exM" ${lsGet('folio.xm')!=='0'?'checked':''} style="width:18px;height:18px;accent-color:var(--acc)"><span>Excel: one tab per month, plus a Summary tab</span></label>
+   <p class="small" style="margin:14px 0 4px"><b>Excel options</b></p>
+   <label class="row" style="gap:10px;margin:6px 0"><input type="checkbox" id="exM" ${lsGet('folio.xm')!=='0'?'checked':''} style="width:18px;height:18px;accent-color:var(--acc)"><span>One tab per month, plus a Summary tab</span></label>
+   <label class="row" style="gap:10px;margin:6px 0"><input type="checkbox" id="exI" ${lsGet('folio.xi')==='1'?'checked':''} style="width:18px;height:18px;accent-color:var(--acc)"><span>Include receipt line items (extra tab)</span></label>
+   <label class="row" style="gap:10px;margin:6px 0;align-items:flex-start"><input type="checkbox" id="exF" ${lsGet('folio.xf')==='1'?'checked':''} style="width:18px;height:18px;margin-top:2px;accent-color:var(--acc)"><span>Include the receipt files<br><span class="small">Downloads a .zip with the spreadsheet and a Receipts folder. Each row links to its PDF.</span></span></label>
    <div class="btns"><button class="btn" data-x>Cancel</button></div>`);
-  $('#exX').onclick=()=>{const bm=$('#exM').checked;lsSet('folio.xm',bm?'1':'0');closeModal();exportXlsx(listIn,bm)};$('#exC').onclick=()=>{closeModal();exportCSV(listIn)};
+  $('#exX').onclick=()=>{const bm=$('#exM').checked,it=$('#exI').checked,fl=$('#exF').checked;lsSet('folio.xm',bm?'1':'0');lsSet('folio.xi',it?'1':'0');lsSet('folio.xf',fl?'1':'0');closeModal();exportXlsx(listIn,bm,{items:it,files:fl})};$('#exC').onclick=()=>{closeModal();exportCSV(listIn)};
 }
 const csvCell=v=>{v=v==null?'':String(v);return/[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
 function exportCSV(listIn){
