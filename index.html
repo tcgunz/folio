@@ -160,6 +160,7 @@ input.fo{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:point
 .lth img{width:100%;height:100%;object-fit:contain}
 .lcard b{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lcard span{font-size:11px;color:var(--muted)}
+.lcard .lamt{color:var(--acc);font-weight:700;font-size:12px}
 .lacts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .lacts .btn{display:flex;align-items:center;justify-content:center;gap:6px}
 .lacts .btn.pri{grid-column:1/-1}
@@ -212,7 +213,7 @@ input.fo{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:point
     <button data-m="lib"><span class="ic" data-i="books"></span>Library</button>
     <hr>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 20</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 21</div>
   </div>
 </div>
 
@@ -255,7 +256,7 @@ input.fo{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:point
   <div class="chips" id="libChips"></div>
   <div id="libFolderTools" style="display:none;gap:14px;padding:6px 14px 0"><button class="link" id="libRenameF">Rename folder</button><button class="link" style="color:var(--danger)" id="libDeleteF">Delete folder</button></div>
   <div id="libGrid" style="flex:1;overflow:auto;padding:12px"></div>
-  <div class="sf" style="border-top:1px solid var(--line);align-items:center"><span class="small" id="libUse" style="flex:1"></span><button class="btn" id="libRestoreB">Restore</button><button class="btn" id="libBackup">Back up</button></div>
+  <div class="sf" style="border-top:1px solid var(--line);align-items:center"><span class="small" id="libUse" style="flex:1"></span><button class="btn" id="libCsv">Export CSV</button><button class="btn" id="libRestoreB">Restore</button><button class="btn" id="libBackup">Back up</button></div>
 </div>
 <div id="scan">
   <div class="sh"><button class="tb" id="scBack"><span class="ic" data-i="back"></span></button><b>Scanner</b><span class="sp"></span><span id="scCount" class="small" style="color:#9ca3af;padding-right:8px"></span></div>
@@ -974,7 +975,8 @@ async function openSave(){
     if(!folder&&!wantDl){toast('Choose a folder or tick download');return}
     lsSet('folio.dl.doc',wantDl?'1':'0');if(folder)lsSet('folio.lastFolder.doc',folder);closeModal();busy('Building PDF…');await tick();let bytes;
     try{bytes=await exportPdf()}catch(err){console.error(err);unbusy();toast('Could not build the PDF: '+(err.message||err),5000);return}
-    if(folder){busy('Saving to Library…');try{const id=await libSave(n,folder,bytes,rep?S.libId:null);S.libId=id;S.libFolder=folder;toast(`Saved to ${folder}`)}catch(e){console.error(e);toast('Could not save to Library: '+(e.message||e),4500)}}
+    let askRc=null;if(folder){busy('Saving to Library…');try{const id=await libSave(n,folder,bytes,rep?S.libId:null);S.libId=id;S.libFolder=folder;toast(`Saved to ${folder}`);if(isReceiptFolder(folder)){const nd=await libGet(id);if(nd&&!nd.receipt)askRc=nd}}catch(e){console.error(e);toast('Could not save to Library: '+(e.message||e),4500)}}
+    if(askRc)setTimeout(()=>openReceiptDetails(askRc,true),400);
     S.dirty=false;unbusy();if(wantDl)offerDownload(n,bytes)};
 }
 
@@ -1643,7 +1645,8 @@ function openScanSave(mode){
     ocr=$('#ssOcr').checked;lsSet('folio.ocr',ocr?'1':'0');closeModal();
     let bytes;try{bytes=await buildScanPdf(look,ocr)}catch(e){console.error(e);unbusy();toast('Could not build the PDF: '+(e.message||e),4500);return}
     unbusy();
-    if(mode==='save'){if(folder){busy('Saving to Library…');try{await libSave(name,folder,bytes);toast(`Saved to ${folder}`)}catch(e){console.error(e);toast('Could not save to Library: '+(e.message||e),4500)}unbusy()}if(wantDl)offerDownload(name,bytes)}
+    if(mode==='save'){let newId=null;if(folder){busy('Saving to Library…');try{newId=await libSave(name,folder,bytes);toast(`Saved to ${folder}`)}catch(e){console.error(e);toast('Could not save to Library: '+(e.message||e),4500)}unbusy()}if(wantDl)offerDownload(name,bytes);
+      if(newId&&isReceiptFolder(folder)){const nd=await libGet(newId);if(nd)setTimeout(()=>openReceiptDetails(nd,true),400)}}
     else{busy('Opening in editor…');try{const append=S.pages.length>0;await addBytesAsDoc(bytes,name,append);SC.pages=[];renderScan();$('#scan').classList.remove('on');toast(append?'Scanned pages added to your document':ocr?'Scan opened. Use Edit text to change any words.':'Scan opened in the editor',4000)}catch(e){console.error(e);toast('Could not open the scan')}unbusy()}
   };
 }
@@ -1698,15 +1701,15 @@ async function libFolders(){try{const f=await ltx('meta','readonly',s=>s.get('fo
 async function libSetFolders(f){LIB.folders=[...new Set(f.filter(Boolean))];await ltx('meta','readwrite',s=>s.put(LIB.folders,'folders'))}
 async function pdfInfo(bytes){
   const pdf=await pdfjsLib.getDocument({data:bytes.slice(),isEvalSupported:false}).promise;let text='',thumb='';
-  try{for(let i=1;i<=Math.min(pdf.numPages,60)&&text.length<60000;i++){const pg=await pdf.getPage(i);const tc=await pg.getTextContent();text+=tc.items.map(t=>t.str).join(' ')+'\n'}}catch(e){}
+  try{for(let i=1;i<=Math.min(pdf.numPages,60)&&text.length<60000;i++){const pg=await pdf.getPage(i);const tc=await pg.getTextContent();const ls=buildLines(tItems(tc)).sort((a,b)=>b.y-a.y||a.x0-b.x0);const rows=[];for(const l of ls){const r=rows.find(r=>Math.abs(r.y-l.y)<l.size*.4);if(r)r.ls.push(l);else rows.push({y:l.y,ls:[l]})}text+=rows.map(r=>r.ls.sort((a,b)=>a.x0-b.x0).map(l=>l.str).join(' ')).join('\n')+'\n'}}catch(e){}
   try{const p1=await pdf.getPage(1),v1=p1.getViewport({scale:1}),vp=p1.getViewport({scale:300/Math.max(v1.width,v1.height)});const c=document.createElement('canvas');c.width=vp.width;c.height=vp.height;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);await p1.render({canvasContext:x,viewport:vp}).promise;thumb=c.toDataURL('image/jpeg',.7)}catch(e){}
   const pages=pdf.numPages;try{pdf.destroy()}catch(e){}
-  return{pages,thumb,text:text.replace(/\s+/g,' ').trim()};
+  return{pages,thumb,text:text.replace(/[ \t]+/g,' ').replace(/\n{2,}/g,'\n').trim()};
 }
 async function libSave(name,folder,bytes,id){
   const b=bytes instanceof Uint8Array?bytes:new Uint8Array(bytes);const info=await pdfInfo(b);const now=Date.now();
   const old=id?await libGet(id):null;
-  const doc={id:old?old.id:'d'+now.toString(36)+Math.random().toString(36).slice(2,7),name:name.replace(/\.pdf$/i,''),folder,created:old?old.created:now,updated:now,size:b.length,pages:info.pages,thumb:info.thumb,text:info.text,blob:new Blob([b],{type:'application/pdf'})};
+  const doc={receipt:old&&old.receipt||undefined,id:old?old.id:'d'+now.toString(36)+Math.random().toString(36).slice(2,7),name:name.replace(/\.pdf$/i,''),folder,created:old?old.created:now,updated:now,size:b.length,pages:info.pages,thumb:info.thumb,text:info.text,blob:new Blob([b],{type:'application/pdf'})};
   await libPut(doc);if(!LIB.folders.includes(folder))await libSetFolders([...LIB.folders,folder]);
   try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
   return doc.id;
@@ -1779,12 +1782,12 @@ async function renderLib(){
 }
 function renderLibGrid(){
   const q=LIB.q.trim().toLowerCase();let list=LIB.docs.filter(d=>!LIB.folder||d.folder===LIB.folder);
-  if(q)list=list.filter(d=>(d.name+' '+d.folder+' '+(d.text||'')).toLowerCase().includes(q));
+  if(q)list=list.filter(d=>libSearchText(d).includes(q));
   list.sort((a,b)=>b.updated-a.updated);
   const G=$('#libGrid');
   if(!list.length){G.innerHTML=`<div class="sempty" style="color:var(--ink)"><div class="ic" style="background:var(--acc2);color:var(--acc)">${icon('folder')}</div><h2>${q?'No matches':'Nothing here yet'}</h2><p style="color:var(--muted)">${q?'Try a different word. Search looks inside scanned text too.':'When you save a PDF or a scan, choose a folder and it will appear here.'}</p></div>`;return}
   const dt=t=>new Date(t).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'});
-  G.innerHTML=`<div class="lgrid">${list.map(d=>`<div class="lcard" data-id="${d.id}"><button class="lmore" data-more="${d.id}" aria-label="More">⋯</button><div class="lth">${d.thumb?`<img src="${d.thumb}" alt="">`:icon('filePlus')}</div><b>${esc(d.name)}</b><span>${esc(d.folder)} · ${d.pages} page${d.pages>1?'s':''}</span><span>${dt(d.updated)}</span></div>`).join('')}</div>`;
+  G.innerHTML=`<div class="lgrid">${list.map(d=>`<div class="lcard" data-id="${d.id}"><button class="lmore" data-more="${d.id}" aria-label="More">⋯</button><div class="lth">${d.thumb?`<img src="${d.thumb}" alt="">`:icon('filePlus')}</div><b>${esc(d.receipt&&d.receipt.vendor?d.receipt.vendor:d.name)}</b>${d.receipt&&d.receipt.total?`<span class="lamt">$${esc(d.receipt.total)}${d.receipt.category?' · '+esc(d.receipt.category):''}</span>`:''}<span>${esc(d.folder)} · ${d.receipt&&d.receipt.date?esc(d.receipt.date):dt(d.updated)}</span></div>`).join('')}</div>`;
 }
 $('#libChips').addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;
   if(b.dataset.new){openModal(`<h3>New folder</h3><input type="text" id="nfName" placeholder="e.g. Business 2026"><div class="btns"><button class="btn" data-x>Cancel</button><button class="btn pri" id="nfOk">Create</button></div>`);setTimeout(()=>$('#nfName').focus(),50);
@@ -1811,10 +1814,11 @@ async function libShare(d){
 async function libItemMenu(id){
   const d=LIB.docs.find(x=>x.id===id);if(!d)return;
   const m=openModal(`<div style="display:flex;gap:12px;align-items:center;margin-bottom:12px">${d.thumb?`<img src="${d.thumb}" style="width:56px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.2)">`:''}<div><h3 style="margin:0">${esc(d.name)}</h3><span class="small">${esc(d.folder)} · ${d.pages} page${d.pages>1?'s':''} · ${(d.size/1048576).toFixed(1)} MB</span></div></div>
-   <div class="lacts"><button class="btn pri" id="liOpen">${icon('pen')}Open</button><button class="btn" id="liDl">${icon('download')}Download</button><button class="btn" id="liShare">${icon('share')}Share / Save to…</button><button class="btn" id="liRen">${icon('edit')}Rename</button><button class="btn" id="liMove">${icon('folder')}Move</button><button class="btn red" id="liDel">${icon('trash')}Delete</button></div>
+   <div class="lacts"><button class="btn pri" id="liOpen">${icon('pen')}Open</button><button class="btn" id="liDl">${icon('download')}Download</button><button class="btn" id="liShare">${icon('share')}Share / Save to…</button><button class="btn" id="liRc">${icon('form')}Receipt details</button><button class="btn" id="liRen">${icon('edit')}Rename</button><button class="btn" id="liMove">${icon('folder')}Move</button><button class="btn red" id="liDel">${icon('trash')}Delete</button></div>
    <div id="liExtra"></div><div class="btns"><button class="btn" data-x>Close</button></div>`);
   $('#liOpen').onclick=()=>{closeModal();libOpenDoc(d)};
   $('#liShare').onclick=()=>{closeModal();libShare(d)};
+  $('#liRc').onclick=()=>{closeModal();setTimeout(()=>openReceiptDetails(d,false),30)};
   $('#liDl').onclick=async()=>{closeModal();offerDownload(d.name+'.pdf',new Uint8Array(await d.blob.arrayBuffer()))};
   $('#liRen').onclick=()=>{$('#liExtra').innerHTML=`<div class="row"><input type="text" id="liName" value="${esc(d.name)}"><button class="btn pri" id="liRenOk">Save</button></div>`;$('#liName').focus();
     $('#liRenOk').onclick=async()=>{const n=$('#liName').value.trim();if(!n)return;d.name=n;await libPut(d);closeModal();renderLib()}};
@@ -1824,6 +1828,91 @@ async function libItemMenu(id){
 }
 $('#libBackup').onclick=libBackup;
 $('#fRestore').onchange=e=>{const f=e.files&&e.files[0];if(f)libRestore(f)};
+
+/* ---- receipt reader: finds store, date, total, tax and payment in recognised text ---- */
+const MONTHS={jan:1,janv:1,feb:2,fev:2,fév:2,mar:3,apr:4,avr:4,may:5,mai:5,jun:6,juin:6,jul:7,juil:7,aug:8,aou:8,aoû:8,sep:9,sept:9,oct:10,nov:11,dec:12,déc:12};
+function rcAmounts(line){const out=[];const re=/(?:^|[^\d.,])\$?\s?(\d{1,3}(?:[,\s]\d{3})+|\d+)[.,](\d{2})(?!\d)/g;let m;while((m=re.exec(line)))out.push(parseFloat(m[1].replace(/[,\s]/g,'')+'.'+m[2]));
+  if(!out.length){const r2=/(?:^|\s)(\d{1,5}) (\d{2})(?=\s*$)/.exec(line);if(r2)out.push(parseFloat(r2[1]+'.'+r2[2]))}return out}
+function rcDate(text){
+  const iso=d=>{const[y,m,dd]=d;if(y<2000||y>2100||m<1||m>12||dd<1||dd>31)return null;return`${y}-${String(m).padStart(2,'0')}-${String(dd).padStart(2,'0')}`};
+  const fixY=y=>y<100?2000+y:y,cands=[],lines=text.split('\n');
+  lines.forEach((ln,li)=>{
+    if(/return|retour|valid|expir|\bexp\b|limite|due|until|before|avant|best/i.test(ln)||/return|retour|limite|valid/i.test(lines[li-1]||''))return;
+    const hasTime=/\b\d{1,2}:\d{2}/.test(ln)?1:0;let m;const add=v=>{if(v)cands.push({li,hasTime,v})};
+    const r1=/\b(20\d\d)[-/.](\d{1,2})[-/.](\d{1,2})\b/g;while((m=r1.exec(ln)))add(iso([+m[1],+m[2],+m[3]]));
+    const r2=/\b(\d{1,2})\s*[-/ .]?\s*([A-Za-zéû]{3,5})\.?\s*[-/ .,]?\s*(20\d\d|\d\d)\b/g;while((m=r2.exec(ln))){const mo=MONTHS[m[2].toLowerCase()];if(mo)add(iso([fixY(+m[3]),mo,+m[1]]))}
+    const r3=/\b([A-Za-zéû]{3,5})\.?\s+(\d{1,2}),?\s+(20\d\d)\b/g;while((m=r3.exec(ln))){const mo=MONTHS[m[1].toLowerCase()];if(mo)add(iso([+m[3],mo,+m[2]]))}
+    const r4=/\b(\d{1,2})[/-](\d{1,2})[/-](20\d\d|\d\d)\b/g;while((m=r4.exec(ln))){let a=+m[1],b=+m[2],y=fixY(+m[3]),mo=a,dd=b;if(a>12&&b<=12){dd=a;mo=b}add(iso([y,mo,dd]))}
+  });
+  cands.sort((a,b)=>b.hasTime-a.hasTime||a.li-b.li);return cands.length?cands[0].v:'';
+}
+function readReceipt(text){
+  const lines=(text||'').split(/\n+/).map(l=>l.trim()).filter(Boolean);
+  const r={vendor:'',date:'',total:'',tax:'',payment:''};if(!lines.length)return r;
+  // vendor: first "name-like" line near the top, or a known web address
+  const skip=/receipt|invoice|welcome|thank|merci|date|time|tel|phone|fax|www|http|address|cashier|store\s*#|^#|order|table|server|copy|copie|questions|drive|street|\bst\b|\bave\b|\brd\b|suite|unit|building/i;
+  const web=(text.match(/\b(?:www\.)?([a-z0-9-]{2,30})\.(?:com|ca|net|org)\b/i)||[])[1];
+  for(const l of lines.slice(0,8)){const letters=(l.match(/[A-Za-zÀ-ÿ]/g)||[]).length;const c=l.replace(/\s*(#|no\.?|store)\s*\d+.*$/i,'').replace(/\s{2,}/g,' ').trim();if(letters>=3&&letters/l.length>.55&&c.length>=2&&c.length<=40&&!skip.test(c)){r.vendor=c;break}}
+  if(web&&(!r.vendor||web.toLowerCase().includes(r.vendor.toLowerCase().replace(/[^a-z]/g,'').slice(0,4))))r.vendor=r.vendor||web.toUpperCase();
+  if(!r.vendor&&web)r.vendor=web.toUpperCase();
+  r.date=rcDate(lines.join('\n'));
+  // total: a TOTAL / AMOUNT DUE line (not subtotal), else the largest amount
+  let total=null;
+  for(let i=0;i<lines.length;i++){const l=lines[i];if(/sub\s*-?\s*total|total\s*(?:savings|discount|items|qty|tax)|before\s*tax/i.test(l))continue;
+    if(/\b(grand\s*total|total|amount\s*due|balance\s*due|montant|à payer|a payer|total\s*due)\b/i.test(l)){let a=rcAmounts(l);if(!a.length&&lines[i+1])a=rcAmounts(lines[i+1]);if(a.length){const v=a[a.length-1];if(total===null||v>=total)total=v}}}
+  if(total===null){const all=lines.flatMap(rcAmounts).filter(v=>v<100000);if(all.length)total=Math.max(...all)}
+  if(total!==null)r.total=total.toFixed(2);
+  let tax=0,found=false;for(const l of lines){if(/\b(hst|gst|pst|qst|tps|tvq|tvh|sales\s*tax|tax)\b/i.test(l)&&!/before|excl|incl|tax\s*total|no\s*tax|tax\s*exempt|tax\s*id|reg/i.test(l)){const a=rcAmounts(l);if(a.length){const v=a[a.length-1];if(!total||v<total){tax+=v;found=true}}}}
+  if(found)r.tax=tax.toFixed(2);
+  const PAY=[['Visa',/\bvisa\b/i],['Mastercard',/master\s*card|\bmc\b/i],['Amex',/amex|american express/i],['Debit',/interac|\bdebit\b|débit/i],['Apple Pay',/apple\s*pay/i],['Google Pay',/google\s*pay/i],['Cash',/\bcash\b|comptant/i]];
+  for(const[n,re]of PAY)if(re.test(text)){r.payment=n;break}
+  return r;
+}
+/* ---------------- receipt details + spreadsheet export ---------------- */
+const CATS=['Meals & entertainment','Office supplies','Travel','Vehicle & fuel','Phone & internet','Utilities','Rent','Professional fees','Advertising','Software & subscriptions','Gifts','Medical','Groceries','Home office','Equipment','Other'];
+const isReceiptFolder=f=>/receipt|expense|reçu/i.test(f||'');
+function vcatGet(v){try{return(JSON.parse(lsGet('folio.vcat')||'{}'))[(v||'').toLowerCase()]||''}catch(e){return ''}}
+function vcatSet(v,c){if(!v||!c)return;try{const m=JSON.parse(lsGet('folio.vcat')||'{}');m[v.toLowerCase()]=c;lsSet('folio.vcat',JSON.stringify(m))}catch(e){}}
+function openReceiptDetails(d,isNew){
+  const auto=d.receipt?null:readReceipt(d.text||'');const r=Object.assign({vendor:'',date:'',total:'',tax:'',payment:'',category:'',note:''},auto||{},d.receipt||{});
+  if(!r.category)r.category=vcatGet(r.vendor);
+  const noText=!d.text||d.text.length<8;const cats=[...new Set([...CATS,r.category].filter(Boolean))];
+  const inp=(id,lab,val,type='text',extra='')=>`<div class="fld"><label>${lab}</label><input type="${type}" id="${id}" value="${esc(val||'')}" ${extra}></div>`;
+  openModal(`<h3>${isNew?'Check the receipt details':'Receipt details'}</h3>
+   ${isNew&&!noText?'<p class="small" style="margin-top:-6px">Folio read these from the receipt. Fix anything that looks wrong.</p>':''}
+   ${noText?'<p class="small" style="margin-top:-6px;color:var(--danger)">No text was found on this receipt. Fill these in, or rescan with “Make text readable” switched on.</p>':''}
+   ${inp('rcV','Store',r.vendor)}
+   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${inp('rcD','Date',r.date,'date')}${inp('rcT','Total ($)',r.total,'text','inputmode="decimal"')}${inp('rcX','Tax ($)',r.tax,'text','inputmode="decimal"')}
+   <div class="fld"><label>Paid with</label><select id="rcP">${['','Visa','Mastercard','Amex','Debit','Cash','Apple Pay','Google Pay','Gift card','Cheque','E-transfer','Other'].map(p=>`<option ${p===r.payment?'selected':''}>${p}</option>`).join('')}</select></div></div>
+   <div class="fld"><label>Category</label><select id="rcC"><option value=""></option>${cats.map(c=>`<option ${c===r.category?'selected':''}>${esc(c)}</option>`).join('')}</select></div>
+   ${inp('rcN','Description (what it was for)',r.note)}
+   <div class="btns"><button class="btn" data-x>${isNew?'Skip':'Cancel'}</button><button class="btn pri" id="rcOk">Save details</button></div>`);
+  const num=v=>{const x=parseFloat(String(v).replace(/[^0-9.,-]/g,'').replace(',','.'));return isNaN(x)?'':x.toFixed(2)};
+  $('#rcV').onchange=()=>{const c=vcatGet($('#rcV').value);if(c&&!$('#rcC').value){const s=$('#rcC');if(![...s.options].some(o=>o.value===c))s.add(new Option(c,c));s.value=c}};
+  $('#rcOk').onclick=async()=>{
+    d.receipt={vendor:$('#rcV').value.trim(),date:$('#rcD').value,total:num($('#rcT').value),tax:num($('#rcX').value),payment:$('#rcP').value,category:$('#rcC').value,note:$('#rcN').value.trim()};
+    vcatSet(d.receipt.vendor,d.receipt.category);
+    try{await libPut(d);closeModal();toast('Receipt details saved');if($('#lib').classList.contains('on'))renderLib()}catch(e){toast('Could not save: '+(e.message||e))}
+  };
+}
+const csvCell=v=>{v=v==null?'':String(v);return/[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
+function exportCSV(){
+  const q=LIB.q.trim().toLowerCase();let list=LIB.docs.filter(d=>!LIB.folder||d.folder===LIB.folder);
+  if(q)list=list.filter(d=>libSearchText(d).includes(q));
+  if(!list.length){toast('Nothing to export in this view');return}
+  const withR=list.filter(d=>d.receipt);if(!withR.length){toast('No receipt details yet. Tap ⋯ → Receipt details on a receipt first.',4500);return}
+  list.sort((a,b)=>((a.receipt&&a.receipt.date)||'9999').localeCompare((b.receipt&&b.receipt.date)||'9999')||a.created-b.created);
+  const rows=[['Date','Month','Store','Description','Category','Paid with','Tax','Total','Folder','Document']];let tt=0,tx=0;const months={};
+  for(const d of list){const r=d.receipt||{};const t=parseFloat(r.total)||0,x=parseFloat(r.tax)||0;tt+=t;tx+=x;const mo=(r.date||'').slice(0,7);if(mo)months[mo]=(months[mo]||0)+t;
+    rows.push([r.date||'',mo,r.vendor||'',r.note||'',r.category||'',r.payment||'',r.tax||'',r.total||'',d.folder,d.name])}
+  rows.push([]);rows.push(['','','','','','TOTAL',tx.toFixed(2),tt.toFixed(2)]);
+  const mk=Object.keys(months).sort();if(mk.length){rows.push([]);rows.push(['Monthly totals']);rows.push(['Month','Total']);mk.forEach(m=>rows.push([m,months[m].toFixed(2)]))}
+  const csv='\ufeff'+rows.map(r=>r.map(csvCell).join(',')).join('\r\n');const t=new Date();
+  offerDownload(`${LIB.folder||'Library'} ${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}.csv`,new TextEncoder().encode(csv),'text/csv');
+  toast(`Exported ${list.length} row${list.length>1?'s':''} · total $${tt.toFixed(2)}`,4000);
+}
+const libSearchText=d=>(d.name+' '+d.folder+' '+(d.text||'')+' '+(d.receipt?Object.values(d.receipt).join(' '):'')).toLowerCase();
+$('#libCsv').onclick=exportCSV;
 
 /* ---------------- file pickers: real inputs laid over the buttons, so a direct tap opens them ---------------- */
 function overlayInput(el,srcId){
