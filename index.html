@@ -203,6 +203,9 @@ table.xs tfoot td{font-weight:700;padding:10px 8px;background:#f9fafb}
 #libChips{padding:10px 12px 0}
 #libChips button{background:#fff;border:1px solid var(--line);color:var(--ink)}
 #libChips button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+#libChips button.rcchip{background:#fffbeb;border-color:#fcd34d;color:#92400e}
+#libChips button.rcchip.on{background:#d97706;border-color:#d97706;color:#fff}
+.chipsep{width:1px;background:var(--line);margin:4px 4px;flex:none}
 .lgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px}
 .lcard{background:#fff;border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:3px;cursor:pointer;border:1px solid var(--line)}
 .lcard:active{transform:scale(.98)}
@@ -265,7 +268,7 @@ table.xs tfoot td{font-weight:700;padding:10px 8px;background:#f9fafb}
     <button data-m="rctoggle" id="mRc"><span class="ic" data-i="grid"></span><span id="mRcL">Hide Receipts &amp; expenses</span></button>
     <hr>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 36</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 37</div>
   </div>
 </div>
 
@@ -1703,6 +1706,9 @@ function openScanSave(mode){
   const m=openModal(`<h3>${mode==='edit'?'Open scan in editor':'Save scan as PDF'}</h3>
    ${mode==='save'?`<input type="text" id="ssName" value="${esc(scanName())}">`:''}
    ${mode==='save'?folderPickerHTML(SC.mode==='receipt'?(LIB.folders.find(isReceiptFolder)||'Receipts'):(lsGet('folio.lastFolder.scan')&&LIB.folders.includes(lsGet('folio.lastFolder.scan'))&&!isReceiptFolder(lsGet('folio.lastFolder.scan'))?lsGet('folio.lastFolder.scan'):'Documents'),true)+`<label class="row" style="gap:10px;margin:8px 0 0"><input type="checkbox" id="ssDl" ${lsGet('folio.dl.scan')!=='0'?'checked':''} style="width:18px;height:18px;accent-color:var(--acc)"><span>Also download to this phone</span></label>`:''}
+   <p class="small" style="margin:12px 0 6px">File size</p>
+   <div class="chips" id="ssQ" style="padding:0;flex-wrap:wrap">${[['small','Small'],['std','Standard'],['high','High']].map(([k,l])=>`<button data-q="${k}" class="btn" style="height:36px">${l}</button>`).join('')}</div>
+   <p class="small" id="ssQL" style="margin:6px 0 0"></p>
    <p class="small" style="margin:12px 0 6px">Look</p>
    <div class="chips" id="ssLook" style="padding:0;flex-wrap:wrap">${[['keep','As shown'],['auto','Colour'],['gray','Grayscale'],['bw','Black & white']].map(([k,l])=>`<button data-l="${k}" class="btn" style="height:36px">${l}</button>`).join('')}</div>
    <div id="ssPrevBox" style="margin-top:12px;background:#eef0f3;border-radius:12px;height:230px;display:grid;place-items:center;overflow:hidden;cursor:zoom-in;position:relative"><img id="ssPrev" alt="Preview" style="max-width:100%;max-height:220px;box-shadow:0 2px 10px rgba(0,0,0,.2)"><span style="position:absolute;right:8px;bottom:8px;background:rgba(21,24,29,.75);color:#fff;font-size:12px;padding:5px 10px;border-radius:14px;display:flex;align-items:center;gap:5px">${icon('plus')}Tap to zoom</span></div>
@@ -1710,6 +1716,9 @@ function openScanSave(mode){
    <label class="row" style="gap:10px;align-items:flex-start;margin-top:16px"><input type="checkbox" id="ssOcr" ${ocr?'checked':''} style="margin-top:3px;width:18px;height:18px;accent-color:var(--acc)"><span><b>Make text readable &amp; editable</b><br><span class="small">Recognises the words so you can search, copy, select and edit them. Needs internet and takes a few seconds per page.</span></span></label>
    <div class="btns"><button class="btn" data-x>Cancel</button><button class="btn pri" id="ssGo">${mode==='edit'?'Open':'Save PDF'}</button></div>`);
   folderPickerWire();
+  let qual=lsGet('folio.q')||'std';const QD={small:'Fast to send, good for receipts and email · about 150 DPI',std:'Sharp on screen and in print · about 230 DPI',high:'Full detail for fine print · larger files'};
+  const tq=()=>{m.querySelectorAll('#ssQ button').forEach(b=>{const on=b.dataset.q===qual;b.style.background=on?'var(--acc)':'#fff';b.style.color=on?'#fff':'';b.style.borderColor=on?'var(--acc)':''});$('#ssQL').textContent=QD[qual]};tq();
+  m.querySelectorAll('#ssQ button').forEach(b=>b.onclick=()=>{qual=b.dataset.q;lsSet('folio.q',qual);tq()});
   const tg=()=>m.querySelectorAll('#ssLook button').forEach(b=>{const on=b.dataset.l===look;b.style.background=on?'var(--acc)':'#fff';b.style.color=on?'#fff':'';b.style.borderColor=on?'var(--acc)':''});tg();
   const pvc={};const showPv=()=>{const p=SC.pages[0];const img=$('#ssPrev');if(!img)return;$('#ssPrevL').textContent=`Preview of page 1${SC.pages.length>1?` of ${SC.pages.length}`:''}`;
     if(look==='keep'){img.src=p.out;return}
@@ -1726,20 +1735,23 @@ function openScanSave(mode){
     if(mode==='save'&&!folder&&!wantDl){toast('Choose a folder or tick download');return}
     if(mode==='save'){lsSet('folio.dl.scan',wantDl?'1':'0');if(folder&&!isReceiptFolder(folder))lsSet('folio.lastFolder.scan',folder)}
     ocr=$('#ssOcr').checked;lsSet('folio.ocr',ocr?'1':'0');if(isReceiptFolder(folder))ocr=true;closeModal();
-    let bytes;try{bytes=await buildScanPdf(look,ocr)}catch(e){console.error(e);unbusy();toast('Could not build the PDF: '+(e.message||e),4500);return}
+    let bytes;try{bytes=await buildScanPdf(look,ocr,qual)}catch(e){console.error(e);unbusy();toast('Could not build the PDF: '+(e.message||e),4500);return}
     unbusy();
-    if(mode==='save'){let newId=null;if(folder){busy('Saving to Library…');try{newId=await libSave(name,folder,bytes);toast(`Saved to ${folder}`)}catch(e){console.error(e);toast('Could not save to Library: '+(e.message||e),4500)}unbusy()}if(wantDl)offerDownload(name,bytes);
+    const mb=bytes.length/1048576,sz=mb>=1?mb.toFixed(1)+' MB':Math.max(1,Math.round(bytes.length/1024))+' KB';
+    if(mode==='save'){let newId=null;if(folder){busy('Saving to Library…');try{newId=await libSave(name,folder,bytes);toast(`Saved to ${folder} · ${sz}`)}catch(e){console.error(e);toast('Could not save to Library: '+(e.message||e),4500)}unbusy()}if(wantDl)offerDownload(name,bytes);
       if(newId&&isReceiptFolder(folder)){const nd=await libGet(newId);if(nd)setTimeout(()=>openReceiptDetails(nd,true),400)}}
     else{busy('Opening in editor…');try{const append=S.pages.length>0;await addBytesAsDoc(bytes,name,append);SC.pages=[];renderScan();$('#scan').classList.remove('on');toast(append?'Scanned pages added to your document':ocr?'Scan opened. Use Edit text to change any words.':'Scan opened in the editor',4000)}catch(e){console.error(e);toast('Could not open the scan')}unbusy()}
   };
 }
-async function buildScanPdf(look,ocr){
+async function buildScanPdf(look,ocr,qual){
   const n=SC.pages.length,outs=[];
   for(let i=0;i<n;i++){const p=SC.pages[i];if(look==='keep'||look===p.filter)outs.push(p.out);else{busy(`Preparing page ${i+1} of ${n}…`);await tick();outs.push(await processScan(p,look))}}
   let words=null,worker=null;
   if(ocr){busy('Loading the text reader…');try{worker=await ocrWorker(pr=>{$('#busyMsg').textContent=`Reading text on page ${cur} of ${n}… ${Math.round(pr*100)}%`})}catch(e){toast("The text reader couldn't load, so the PDF was saved without editable text.",5000)}}
   let cur=0;
   if(worker){words=[];try{for(let i=0;i<n;i++){cur=i+1;$('#busyMsg').textContent=`Reading text on page ${cur} of ${n}…`;const im=await imgFrom(outs[i]);const c=downscale(im,2600);words.push(await ocrCanvas(worker,c))}}catch(e){console.error(e);words=null;toast('Text recognition failed. Saved without editable text.',4500)}try{await worker.terminate()}catch(e){}}
+  const QS={small:[1700,.72],std:[2550,.8],high:[0,.9]}[qual||'std']||[2550,.8];
+  if(QS[0]){for(let i=0;i<n;i++){busy(`Optimising page ${i+1} of ${n}…`);await tick();const im=await imgFrom(outs[i]);const c=downscale(im,QS[0]);outs[i]=c.toDataURL('image/jpeg',QS[1])}}
   busy('Building PDF…');await tick();
   const d=await PDFLib.PDFDocument.create();const font=words?await d.embedFont(PDFLib.StandardFonts.Helvetica):null;
   for(let i=0;i<n;i++){const im=await d.embedJpg(dataBytes(outs[i]));const W=im.width>im.height?792:612,H=W*im.height/im.width;const pg=d.addPage([W,H]);pg.drawImage(im,{x:0,y:0,width:W,height:H});
@@ -1858,13 +1870,16 @@ async function renderLib(){
   try{LIB.docs=await libAll()}catch(e){LIB.docs=[];$('#libGrid').innerHTML='<p class="small">Storage isn’t available in this browser.</p>';return}
   await libFolders();if(LIB.folder&&!LIB.folders.includes(LIB.folder))LIB.folder='';
   const cnt=f=>LIB.docs.filter(d=>d.folder===f).length;
-  $('#libChips').innerHTML=`<button data-f="" class="${LIB.folder===''?'on':''}">All · ${LIB.docs.length}</button>`+LIB.folders.map(f=>`<button data-f="${esc(f)}" class="${LIB.folder===f?'on':''}">${esc(f)} · ${cnt(f)}</button>`).join('')+`<button data-new="1">＋ New folder</button>`;
+  const rcOff=lsGet('folio.receipts')==='0',dF=LIB.folders.filter(f=>!isReceiptFolder(f)),rF=LIB.folders.filter(isReceiptFolder);
+  const allN=LIB.docs.filter(d=>!(rcOff&&isReceiptFolder(d.folder))).length;
+  $('#libChips').innerHTML=`<button data-f="" class="${LIB.folder===''?'on':''}">All · ${allN}</button>`+dF.map(f=>`<button data-f="${esc(f)}" class="${LIB.folder===f?'on':''}">${esc(f)} · ${cnt(f)}</button>`).join('')
+    +(rF.length&&!rcOff?`<span class="chipsep"></span>`+rF.map(f=>`<button data-f="${esc(f)}" class="rcchip ${LIB.folder===f?'on':''}">🧾 ${esc(f)} · ${cnt(f)}</button>`).join(''):'')+`<button data-new="1">＋ New folder</button>`;
   $('#libFolderTools').style.display=LIB.folder?'flex':'none';
   renderLibGrid();
   try{const e=await navigator.storage.estimate();$('#libUse').textContent=`${(LIB.docs.reduce((a,d)=>a+(d.size||0),0)/1048576).toFixed(1)} MB in your library`}catch(e){}
 }
 function renderLibGrid(){
-  const q=LIB.q.trim().toLowerCase();let list=LIB.docs.filter(d=>!LIB.folder||d.folder===LIB.folder);
+  const q=LIB.q.trim().toLowerCase(),rcOff=lsGet('folio.receipts')==='0';let list=LIB.docs.filter(d=>LIB.folder?d.folder===LIB.folder:!(rcOff&&isReceiptFolder(d.folder)));
   if(q)list=list.filter(d=>libSearchText(d).includes(q));
   list.sort((a,b)=>b.updated-a.updated);
   const G=$('#libGrid');
