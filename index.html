@@ -107,6 +107,10 @@ svg{width:20px;height:20px;flex:none}
 .small{font-size:12px;color:var(--muted)}
 #menu button,.hero .big,.sbtn,#tools button{position:relative;overflow:hidden}
 input.fo{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:100px;z-index:2}
+.grip{width:26px;min-width:26px;height:34px;display:grid;place-items:center;cursor:grab;touch-action:none;opacity:.6;padding:0!important}
+.grip:active{cursor:grabbing;opacity:1}
+#selbar .grip{color:#fff}
+#zoom .grip{color:var(--muted)}
 #toast{position:fixed;left:50%;bottom:150px;transform:translateX(-50%) translateY(20px);background:#15181d;color:#fff;padding:10px 16px;border-radius:12px;font-size:13px;opacity:0;pointer-events:none;transition:.2s;z-index:100;max-width:90vw;text-align:center}
 #toast.on{opacity:1;transform:translateX(-50%)}
 #busy{position:fixed;inset:0;background:rgba(255,255,255,.6);z-index:90;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;font-weight:500;backdrop-filter:blur(2px)}
@@ -1443,6 +1447,31 @@ async function buildScanPdf(look,ocr){
     if(words&&words[i])drawHiddenWords(pg,words[i],font,(nx,ny)=>[nx*W,H-ny*H])}
   return d.save();
 }
+
+/* ---------------- movable floating bars ---------------- */
+function makeMovable(el,key){
+  const g=document.createElement('button');g.className='grip';g.title='Drag to move · double-tap to put back';
+  g.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01"/></svg>';
+  el.prepend(g);
+  const place=(p,save)=>{const r=el.getBoundingClientRect(),w=r.width||200,h=r.height||44;
+    const x=Math.max(4,Math.min(innerWidth-w-4,p.x)),y=Math.max(4,Math.min(innerHeight-h-4,p.y));
+    Object.assign(el.style,{position:'fixed',left:x+'px',top:y+'px',bottom:'auto',right:'auto',transform:'none'});el.dataset.moved='1';
+    if(save)lsSet('folio.pos.'+key,JSON.stringify({x,y}))};
+  const reset=()=>{['position','left','top','bottom','right','transform'].forEach(k=>el.style[k]='');delete el.dataset.moved;try{localStorage.removeItem('folio.pos.'+key)}catch(e){}};
+  let drag=null,lastTap=0;
+  g.addEventListener('pointerdown',ev=>{ev.preventDefault();ev.stopPropagation();const now=Date.now();if(now-lastTap<350){reset();lastTap=0;return}lastTap=now;
+    const r=el.getBoundingClientRect();drag={dx:ev.clientX-r.left,dy:ev.clientY-r.top};try{g.setPointerCapture(ev.pointerId)}catch(e){}});
+  g.addEventListener('pointermove',ev=>{if(drag)place({x:ev.clientX-drag.dx,y:ev.clientY-drag.dy},false)});
+  const end=()=>{if(!drag)return;drag=null;const r=el.getBoundingClientRect();if(el.dataset.moved)lsSet('folio.pos.'+key,JSON.stringify({x:r.left,y:r.top}))};
+  g.addEventListener('pointerup',end);g.addEventListener('pointercancel',end);
+  g.addEventListener('click',ev=>ev.stopPropagation());
+  const restore=()=>{try{const p=JSON.parse(lsGet('folio.pos.'+key)||'null');if(p)place(p,false)}catch(e){}};
+  addEventListener('resize',()=>{if(el.dataset.moved){const r=el.getBoundingClientRect();place({x:r.left,y:r.top},false)}});
+  return{grip:g,restore};
+}
+const zoomMov=makeMovable($('#zoom'),'zoom');setTimeout(zoomMov.restore,50);
+const selMov=makeMovable($('#selbar'),'selbar');
+const _rsb=renderSelbar;renderSelbar=function(){_rsb();const b=$('#selbar');if(b.classList.contains('on')){b.prepend(selMov.grip);requestAnimationFrame(selMov.restore)}};
 
 /* ---------------- file pickers: real inputs laid over the buttons, so a direct tap opens them ---------------- */
 function overlayInput(el,srcId){
