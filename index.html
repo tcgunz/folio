@@ -1014,16 +1014,16 @@ function detectQuad(c,strict){
         if(k>=w&&!lab[k-w]&&g[k-w]>th){lab[k-w]=id;q[qt++]=k-w}
         if(k<N-w&&!lab[k+w]&&g[k+w]>th){lab[k+w]=id;q[qt++]=k+w}}
       if(cnt>bestN){bestN=cnt;bestId=id}}
-    if(bestN<N*.08||bestN>N*.97)return fb;
+    if(bestN<N*.035||bestN>N*.97)return fb;
     let tl=[0,0,1e9],tr=[0,0,-1e9],br=[0,0,-1e9],bl=[0,0,1e9];
     for(let i=0;i<N;i++){if(lab[i]!==bestId)continue;const px=i%w,py=(i/w)|0;const s1=px+py,s2=px-py;
       if(s1<tl[2])tl=[px,py,s1];if(s1>br[2])br=[px,py,s1];if(s2>tr[2])tr=[px,py,s2];if(s2<bl[2])bl=[px,py,s2]}
     const Q=[tl,tr,br,bl].map(p=>[(p[0]+.5)/s,(p[1]+.5)/s]);
     const area=Math.abs((Q[0][0]*Q[1][1]-Q[1][0]*Q[0][1])+(Q[1][0]*Q[2][1]-Q[2][0]*Q[1][1])+(Q[2][0]*Q[3][1]-Q[3][0]*Q[2][1])+(Q[3][0]*Q[0][1]-Q[0][0]*Q[3][1]))/2;
-    if(area<W*H*.08)return fb;
+    if(area<W*H*.035)return fb;
     if(strict){
       // only accept something that really looks like a sheet of paper
-      if(area<W*H*.15||area>W*H*.92)return fb;
+      if(area<W*H*.04||area>W*H*.92)return fb;
       const sq=area*s*s;if(bestN/sq<.86)return fb;                       // solid, rectangular blob
       let sIn=0,sAll=0;for(let i=0;i<N;i++){sAll+=g[i];if(lab[i]===bestId)sIn+=g[i]}
       const mIn=sIn/bestN,mOut=(sAll-sIn)/Math.max(1,N-bestN);if(mIn-mOut<28)return fb;   // clearly brighter than surroundings
@@ -1031,8 +1031,8 @@ function detectQuad(c,strict){
       for(let k=0;k<4;k++){const a=Q[(k+3)%4],b=Q[k],cc=Q[(k+1)%4],v1=[a[0]-b[0],a[1]-b[1]],v2=[cc[0]-b[0],cc[1]-b[1]];
         const ang=Math.acos(Math.max(-1,Math.min(1,(v1[0]*v2[0]+v1[1]*v2[1])/(Math.hypot(...v1)*Math.hypot(...v2)||1))))*180/Math.PI;if(ang<55||ang>125)return fb}
       const D=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]),w1=D(Q[0],Q[1]),w2=D(Q[3],Q[2]),h1=D(Q[0],Q[3]),h2=D(Q[1],Q[2]);
-      if(Math.max(w1,w2)/Math.min(w1,w2)>1.8||Math.max(h1,h2)/Math.min(h1,h2)>1.8)return fb;
-      const ar=(w1+w2)/(h1+h2);if(ar<.35||ar>2.9)return fb;               // paper-like proportions
+      if(Math.max(w1,w2)/Math.min(w1,w2)>2.2||Math.max(h1,h2)/Math.min(h1,h2)>2.2)return fb;
+      const ar=(w1+w2)/(h1+h2);if(ar<.12||ar>8)return fb;               // paper, cards and long receipts
     }
     Q.found=true;return Q;
   }catch(e){return fb}
