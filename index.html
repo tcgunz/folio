@@ -268,7 +268,7 @@ table.xs tfoot td{font-weight:700;padding:10px 8px;background:#f9fafb}
     <button data-m="rctoggle" id="mRc"><span class="ic" data-i="grid"></span><span id="mRcL">Hide Receipts &amp; expenses</span></button>
     <hr>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 46</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 47</div>
   </div>
 </div>
 
@@ -758,9 +758,17 @@ function drawOverlay(e){
   if(S.msel&&S.msel.pid===pg.id){ctx.save();ctx.fillStyle='rgba(37,99,235,.2)';for(const l of S.msel.lines){const r=scrRect(e,lineRect(l));ctx.fillRect(r[0],r[1],r[2]-r[0],r[3]-r[1])}
     ctx.setLineDash([5,4]);ctx.strokeStyle='#2563eb';ctx.lineWidth=1.5;for(const i of S.msel.ann){const a=pg.annots[i];if(a){const b=bbox(a,e.vp,R);ctx.strokeRect(b[0],b[1],b[2]-b[0],b[3]-b[1])}}ctx.restore()}
   if(drag&&drag.mode==='marq'&&drag.e===e){const[a,b]=[drag.start,drag.end];ctx.save();ctx.fillStyle='rgba(37,99,235,.08)';ctx.strokeStyle='#2563eb';ctx.setLineDash([5,4]);ctx.lineWidth=1.2;ctx.fillRect(Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.abs(b[0]-a[0]),Math.abs(b[1]-a[1]));ctx.strokeRect(Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.abs(b[0]-a[0]),Math.abs(b[1]-a[1]));ctx.restore()}
-  if(S.sel&&S.sel.pid===pg.id){const a=pg.annots[S.sel.i];if(a){const b=bbox(a,e.vp,R);ctx.save();ctx.setLineDash([5,4]);ctx.strokeStyle='#0f766e';ctx.lineWidth=1.5;ctx.strokeRect(b[0],b[1],b[2]-b[0],b[3]-b[1]);ctx.restore()}}
+  if(S.sel&&S.sel.pid===pg.id){const a=pg.annots[S.sel.i];if(a){const b=bbox(a,e.vp,R);ctx.save();ctx.setLineDash([5,4]);ctx.strokeStyle='#0f766e';ctx.lineWidth=1.5;ctx.strokeRect(b[0],b[1],b[2]-b[0],b[3]-b[1]);ctx.setLineDash([]);
+    if(S.tool==='select'){ctx.beginPath();ctx.arc(b[2],b[3],10,0,7);ctx.fillStyle='#fff';ctx.fill();ctx.lineWidth=2.5;ctx.stroke();ctx.beginPath();ctx.moveTo(b[2]-4,b[3]-4);ctx.lineTo(b[2]+4,b[3]+4);ctx.moveTo(b[2]+1,b[3]+4);ctx.lineTo(b[2]+4,b[3]+4);ctx.lineTo(b[2]+4,b[3]+1);ctx.moveTo(b[2]-1,b[3]-4);ctx.lineTo(b[2]-4,b[3]-4);ctx.lineTo(b[2]-4,b[3]-1);ctx.lineWidth=1.6;ctx.stroke()}
+    ctx.restore()}}
 }
 function moveA(a,dx,dy){if(a.t==='edit'||a.t==='tblock'){a.x+=dx;a.y+=dy}else if(a.t==='ink')a.s.forEach(st=>st.forEach(p=>{p[0]+=dx;p[1]+=dy}));else if(a.a){a.a=[a.a[0]+dx,a.a[1]+dy];a.b=[a.b[0]+dx,a.b[1]+dy]}else{a.x+=dx;a.y+=dy}}
+function scaleFrom(o,a,k,c){const F=p=>[c[0]+(p[0]-c[0])*k,c[1]+(p[1]-c[1])*k];
+  if(o.t==='ink')a.s=o.s.map(st=>st.map(F));
+  else if(o.a){a.a=F(o.a);a.b=F(o.b)}
+  else if(o.t==='img'){[a.x,a.y]=F([o.x,o.y]);a.w=o.w*k;a.h=o.h*k}
+  else if(o.t==='tblock'){[a.x,a.y]=F([o.x,o.y]);a.size=Math.max(3,o.size*k);a.lead=o.lead*k;a.w=o.w*k;layoutTB(a)}
+  else if(o.t==='text'||o.t==='edit'){[a.x,a.y]=F([o.x,o.y]);a.size=Math.max(3,Math.round(o.size*k*10)/10)}}
 function hitTest(e,pg,sx,sy){const R=rot(pg);for(let i=pg.annots.length-1;i>=0;i--){const b=bbox(pg.annots[i],e.vp,R);if(sx>=b[0]-4&&sx<=b[2]+4&&sy>=b[1]-4&&sy<=b[3]+4)return i}return -1}
 
 /* ---------------- pointer on pages ---------------- */
@@ -785,11 +793,14 @@ function onDown(ev,e){
   const vp=e.vp,[sx,sy]=loc(ev,e),P=vp.convertToPdfPoint(sx,sy);
   try{e.c2.setPointerCapture(ev.pointerId)}catch(_){}
   S.cur=S.pages.indexOf(pg);
+  if(t==='select'&&S.sel&&S.sel.pid===pg.id){const a=pg.annots[S.sel.i];if(a){const b=bbox(a,vp,rot(pg));
+    if(Math.hypot(sx-b[2],sy-b[3])<28){S.undo.push(JSON.stringify(S.pages));const cx=(b[0]+b[2])/2,cy=(b[1]+b[3])/2;
+      drag={mode:'resize',e,orig:JSON.parse(JSON.stringify(a)),c:vp.convertToPdfPoint(cx,cy),cs:[cx,cy],d0:Math.max(10,Math.hypot(sx-cx,sy-cy)),moved:false};return}}}
   if(t==='select'||t==='edittext'){
     const h=hitTest(e,pg,sx,sy);
     if(h>=0&&t==='edittext'&&['tblock','edit'].includes(pg.annots[h].t)){editAnnot(e,pg,h);return}
     if(h>=0&&t==='select'){if(S.msel)setMsel(null);setSel({pid:pg.id,i:h});S.undo.push(JSON.stringify(S.pages));drag={mode:'move',e,last:[sx,sy],moved:false};return}
-    if(S.sel)setSel(null);ensureText(e,pg);drag={mode:'marq',e,start:[sx,sy],end:[sx,sy]};drawOverlay(e);return}
+    if(S.sel&&ev.pointerType!=='touch')setSel(null);ensureText(e,pg);drag={mode:'marq',e,start:[sx,sy],end:[sx,sy]};drawOverlay(e);return}
   if(S.sel)setSel(null);
   if(t==='pen'){snapshot();const a={t:'ink',s:[[P]],color:S.colors.pen,w:S.widths.pen};pg.annots.push(a);drag={mode:'ink',e,a,last:[sx,sy]};drawOverlay(e);return}
   if(['hl','wo','rect','ellipse','line','arrow'].includes(t)){snapshot();const a={t,a:P,b:P,color:t==='wo'?'#ffffff':t==='hl'?S.colors.hl:S.colors.shape,w:S.widths.shape};if(t==='hl'||t==='wo')delete a.w;pg.annots.push(a);drag={mode:'shape',e,a,start:[sx,sy]};return}
@@ -811,13 +822,14 @@ function onMove(ev,e){
     else if(drag.mode==='ink'){if(Math.hypot(sx-drag.last[0],sy-drag.last[1])<1.2)continue;drag.a.s[0].push(vp.convertToPdfPoint(sx,sy));drag.last=[sx,sy]}
     else if(drag.mode==='shape'){drag.a.b=vp.convertToPdfPoint(sx,sy);drag.end=[sx,sy]}
     else if(drag.mode==='marq'){drag.end=[sx,sy]}
+    else if(drag.mode==='resize'){const a=pg.annots[S.sel.i];if(a){const k=Math.max(.08,Math.min(12,Math.hypot(sx-drag.cs[0],sy-drag.cs[1])/drag.d0));scaleFrom(drag.orig,a,k,drag.c);drag.moved=true}}
   }
   drawOverlay(e);
 }
 function onUp(ev,e){
   if(!drag||drag.e!==e)return;const pg=getPg(e.id);
   if(drag.mode==='marq'){const d=drag;drag=null;drawOverlay(e);finishMarq(e,pg,d);return}
-  if(drag.mode==='move'&&!drag.moved)S.undo.pop();
+  if((drag.mode==='move'||drag.mode==='resize')&&!drag.moved)S.undo.pop();
   if(drag.mode==='shape'){const en=drag.end||drag.start;if(Math.abs(en[0]-drag.start[0])<4&&Math.abs(en[1]-drag.start[1])<4){pg.annots.pop();S.undo.pop()}}
   drag=null;drawOverlay(e);updateUI();
 }
@@ -839,7 +851,7 @@ function setTool(t){
 }
 function renderProps(){
   const t=S.tool,p=$('#props'),k=CKEY[t];let h='';
-  const hints={hand:'Drag to scroll, pinch to zoom, double-tap to fit. Pick a tool below to edit.',select:'Tap a paragraph or item to select it. Drag a box to select several lines or items.',wo:'Drag over anything to cover it with white.',edittext:'Tap a paragraph to edit it, or drag across exactly the lines you want.',place:'Tap on a page to place it.'};
+  const hints={hand:'Drag to scroll, pinch to zoom, double-tap to fit. Pick a tool below to edit.',select:'Tap an item to select it, then drag to move, or pinch / drag the round corner handle to resize. Drag a box to select several.',wo:'Drag over anything to cover it with white.',edittext:'Tap a paragraph to edit it, or drag across exactly the lines you want.',place:'Tap on a page to place it.'};
   if(t==='rotpage'){const n=S.pages.length;
     p.innerHTML=n?`<span class="hint" style="color:var(--ink);font-weight:600">Page ${S.cur+1} of ${n}</span>
       <button class="btn" data-r="-90" style="height:34px;display:flex;align-items:center;gap:5px">${icon('rotL')}Left</button>
@@ -1486,6 +1498,7 @@ function editRotatedAt(e,pg,P){
 }
 function setMsel(m){const prev=S.msel;S.msel=m;if(m&&S.sel)S.sel=null;[prev&&prev.pid,m&&m.pid].forEach(id=>{if(id&&els.get(id))drawOverlay(els.get(id))});renderSelbar()}
 function finishMarq(e,pg,d){
+  if(S.sel)setSel(null);
   if(!e.tit){ensureText(e,pg);toast('Reading this page… try again in a moment');return}
   const tb=textStruct(e),tap=Math.hypot(d.end[0]-d.start[0],d.end[1]-d.start[1])<8;let lines=[],ann=[];
   if(tap){const P=e.vp.convertToPdfPoint(...d.start),L=lineAt(tb,P);
@@ -2474,7 +2487,11 @@ const PINCH={on:null};
   const cancelDrag=()=>{if(!drag)return;const e=drag.e,pg=getPg(e.id);
     if(pg&&(drag.mode==='ink'||drag.mode==='shape')){pg.annots.pop();S.undo.pop()}drag=null;drawOverlay(e);updateUI()};
   v.addEventListener('touchstart',ev=>{
-    if(ev.touches.length!==2||!S.pages.length)return;cancelDrag();
+    if(ev.touches.length!==2||!S.pages.length)return;
+    if(S.sel&&S.tool==='select'){const pg=getPg(S.sel.pid),e=els.get(S.sel.pid),a=pg&&pg.annots[S.sel.i];
+      if(a&&e){if(drag&&drag.mode==='move'){drag=null}else S.undo.push(JSON.stringify(S.pages));const b=bbox(a,e.vp,rot(pg)),cx=(b[0]+b[2])/2,cy=(b[1]+b[3])/2;
+        PINCH.item={e,i:S.sel.i,pid:pg.id,orig:JSON.parse(JSON.stringify(a)),c:e.vp.convertToPdfPoint(cx,cy),d0:Math.max(10,dist(ev.touches))};PINCH.on=PINCH.item;return}}
+    cancelDrag();
     const m=mid(ev.touches),el=document.elementFromPoint(m[0],m[1]),pgEl=el&&el.closest&&el.closest('.pg');let anchor=null;
     if(pgEl){const r=pgEl.getBoundingClientRect();anchor={id:+pgEl.dataset.id,fx:(m[0]-r.left)/r.width,fy:(m[1]-r.top)/r.height}}
     const br=box.getBoundingClientRect();box.style.transformOrigin=`${m[0]-br.left}px ${m[1]-br.top}px`;
@@ -2482,11 +2499,13 @@ const PINCH={on:null};
   },{passive:true,capture:true});
   v.addEventListener('touchmove',ev=>{
     const P=PINCH.on;if(!P||ev.touches.length<2)return;ev.preventDefault();
+    if(P===PINCH.item){const pg=getPg(P.pid),a=pg&&pg.annots[P.i];if(a){const k=Math.max(.08,Math.min(12,dist(ev.touches)/P.d0));scaleFrom(P.orig,a,k,P.c);drawOverlay(P.e)}return}
     const ns=Math.max(.25,Math.min(5,S.scale*dist(ev.touches)/P.d0));P.k=ns/S.scale;P.m=mid(ev.touches);
     box.style.transform=`translate(${P.m[0]-P.m0[0]}px,${P.m[1]-P.m0[1]}px) scale(${P.k})`;$('#zVal').textContent=Math.round(ns*100)+'%';showZoomBadge(ns);
   },{passive:false,capture:true});
   const end=ev=>{
-    const P=PINCH.on;if(!P||ev.touches.length>=2)return;PINCH.on=null;box.style.transform='';box.style.transformOrigin='';
+    const P=PINCH.on;if(!P||ev.touches.length>=2)return;PINCH.on=null;
+    if(P===PINCH.item){PINCH.item=null;S.dirty=true;updateUI();renderSelbar();return}box.style.transform='';box.style.transformOrigin='';
     if(Math.abs(P.k-1)<.02){$('#zVal').textContent=Math.round(S.scale*100)+'%';return}
     S.scale=Math.max(.25,Math.min(5,S.scale*P.k));relayout(false);
     const vr=v.getBoundingClientRect();
