@@ -471,7 +471,7 @@ const getVP=pg=>srcPage(pg).getViewport({scale:S.scale,rotation:rot(pg)});
 
 function snapshot(){S.undo.push(JSON.stringify(S.pages));if(S.undo.length>80)S.undo.shift();S.redo=[];updateUI()}
 function layoutSig(){return S.pages.map(p=>p.id+':'+p.extra).join(',')}
-function restore(json){const before=layoutSig();S.pages=JSON.parse(json);S.sel=null;if(layoutSig()===before){redrawAll()}else relayout();renderSelbar();updateUI()}
+function restore(json){const before=layoutSig();S.pages=JSON.parse(json);S.sel=null;S.msel=null;if(layoutSig()===before){redrawAll()}else relayout();renderSelbar();updateUI()}
 function undo(){if(!S.undo.length)return;S.redo.push(JSON.stringify(S.pages));restore(S.undo.pop())}
 function redo(){if(!S.redo.length)return;S.undo.push(JSON.stringify(S.pages));restore(S.redo.pop())}
 
@@ -595,6 +595,9 @@ function drawA(ctx,a,vp,R){
     ctx.stroke();break}
   case 'text':{const[x,y]=V([a.x,a.y]);ctx.translate(x,y);ctx.rotate((R-a.R)*Math.PI/180);ctx.font=FONT(a.size*sc);ctx.fillStyle=a.color;ctx.textBaseline='alphabetic';
     a.text.split('\n').forEach((ln,i)=>ctx.fillText(ln,0,(a.size*.8+i*a.size*1.2)*sc));break}
+  case 'tblock':{ctx.fillStyle=a.bg;for(const c of a.covers){const P=[[c[0],c[1]],[c[2],c[1]],[c[2],c[3]],[c[0],c[3]]].map(V);ctx.beginPath();P.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));ctx.closePath();ctx.fill()}
+    if(a.lines&&a.lines.length){const O=V([a.x,a.y]),U=V([a.x+10,a.y]),th=Math.atan2(U[1]-O[1],U[0]-O[0]);ctx.font=EFONT(a,a.size*sc);ctx.fillStyle=a.color;ctx.textBaseline='alphabetic';
+      tbExtents(a).forEach((x,i)=>{const T=V([x.x,x.y]);ctx.save();ctx.translate(T[0],T[1]);ctx.rotate(th);ctx.font=EFONT(a,a.size*sc);ctx.fillText(a.lines[i],0,0);ctx.restore()})}break}
   case 'edit':{const r=a.ang*Math.PI/180,O=V([a.ox,a.oy]),U=V([a.ox+Math.cos(r)*10,a.oy+Math.sin(r)*10]),th=Math.atan2(U[1]-O[1],U[0]-O[0]);
     ctx.save();ctx.translate(O[0],O[1]);ctx.rotate(th);ctx.fillStyle=a.bg;ctx.fillRect(-1.5*sc,-1.0*a.cs*sc,(a.cw+3)*sc,1.3*a.cs*sc);ctx.restore();
     if(a.text){const T=V([a.x,a.y]);ctx.translate(T[0],T[1]);ctx.rotate(th);ctx.font=EFONT(a,a.size*sc);ctx.fillStyle=a.color;ctx.textBaseline='alphabetic';ctx.fillText(a.text,0,0)}break}
@@ -603,7 +606,8 @@ function drawA(ctx,a,vp,R){
 }
 function bbox(a,vp,R){
   const sc=S.scale,V=p=>vp.convertToViewportPoint(p[0],p[1]);let pts=[],pad=6;
-  if(a.t==='edit'){const r=a.ang*Math.PI/180,u=[Math.cos(r),Math.sin(r)],v=[-Math.sin(r),Math.cos(r)];
+  if(a.t==='tblock'){for(const c of a.covers)[[c[0],c[1]],[c[2],c[3]],[c[0],c[3]],[c[2],c[1]]].forEach(p=>pts.push(V(p)));tbExtents(a).forEach(x=>{pts.push(V([x.x,x.y-a.size*.3]));pts.push(V([x.x+x.tw,x.y+a.size]))})}
+  else if(a.t==='edit'){const r=a.ang*Math.PI/180,u=[Math.cos(r),Math.sin(r)],v=[-Math.sin(r),Math.cos(r)];
     for(const ss of[-1.5,a.cw+1.5])for(const rr of[-.3*a.cs,a.cs])pts.push(V([a.ox+u[0]*ss+v[0]*rr,a.oy+u[1]*ss+v[1]*rr]));
     if(a.text){mctx.font=EFONT(a,a.size*sc);const tw=mctx.measureText(a.text).width;const T=V([a.x,a.y]),O=V([a.ox,a.oy]),U=V([a.ox+u[0]*10,a.oy+u[1]*10]),th=Math.atan2(U[1]-O[1],U[0]-O[0]),c=Math.cos(th),sn=Math.sin(th);
       [[0,-a.size*sc],[tw,-a.size*sc],[tw,.3*a.size*sc],[0,.3*a.size*sc]].forEach(([p,q])=>pts.push([T[0]+p*c-q*sn,T[1]+p*sn+q*c]))}}
@@ -618,15 +622,18 @@ function bbox(a,vp,R){
 function drawOverlay(e){
   const pg=getPg(e.id);if(!pg)return;const c=e.c2,ctx=c.getContext('2d'),R=rot(pg);
   ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,c.width,c.height);ctx.setTransform(e.dpr,0,0,e.dpr,0,0);
-  if(S.tool==='edittext'){
-    if(e.tit){ctx.save();ctx.strokeStyle='rgba(15,118,110,.55)';ctx.fillStyle='rgba(15,118,110,.06)';ctx.lineWidth=1;
-      for(const it of e.tit){const P=itemPoly(it).map(p=>e.vp.convertToViewportPoint(p[0],p[1]));ctx.beginPath();P.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));ctx.closePath();ctx.fill();ctx.stroke()}ctx.restore()}
-    else if(!e.tload){e.tload=1;getTC(pg).then(tc=>{e.tit=tItems(tc);if(els.get(e.id)===e)drawOverlay(e)})}
-  }
+  if(S.tool==='edittext'||S.tool==='select'){ensureText(e,pg);
+    const tb=S.tool==='edittext'&&textStruct(e);
+    if(tb){ctx.save();ctx.strokeStyle='rgba(15,118,110,.5)';ctx.fillStyle='rgba(15,118,110,.05)';ctx.lineWidth=1;
+      for(const b of tb.blocks){let r=null;for(const l of b.lines){const q=scrRect(e,lineRect(l));r=r?[Math.min(r[0],q[0]),Math.min(r[1],q[1]),Math.max(r[2],q[2]),Math.max(r[3],q[3])]:q}
+        ctx.beginPath();ctx.rect(r[0]-1,r[1]-1,r[2]-r[0]+2,r[3]-r[1]+2);ctx.fill();ctx.stroke()}ctx.restore()}}
   pg.annots.forEach(a=>{ctx.save();drawA(ctx,a,e.vp,R);ctx.restore()});
+  if(S.msel&&S.msel.pid===pg.id){ctx.save();ctx.fillStyle='rgba(37,99,235,.2)';for(const l of S.msel.lines){const r=scrRect(e,lineRect(l));ctx.fillRect(r[0],r[1],r[2]-r[0],r[3]-r[1])}
+    ctx.setLineDash([5,4]);ctx.strokeStyle='#2563eb';ctx.lineWidth=1.5;for(const i of S.msel.ann){const a=pg.annots[i];if(a){const b=bbox(a,e.vp,R);ctx.strokeRect(b[0],b[1],b[2]-b[0],b[3]-b[1])}}ctx.restore()}
+  if(drag&&drag.mode==='marq'&&drag.e===e){const[a,b]=[drag.start,drag.end];ctx.save();ctx.fillStyle='rgba(37,99,235,.08)';ctx.strokeStyle='#2563eb';ctx.setLineDash([5,4]);ctx.lineWidth=1.2;ctx.fillRect(Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.abs(b[0]-a[0]),Math.abs(b[1]-a[1]));ctx.strokeRect(Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.abs(b[0]-a[0]),Math.abs(b[1]-a[1]));ctx.restore()}
   if(S.sel&&S.sel.pid===pg.id){const a=pg.annots[S.sel.i];if(a){const b=bbox(a,e.vp,R);ctx.save();ctx.setLineDash([5,4]);ctx.strokeStyle='#0f766e';ctx.lineWidth=1.5;ctx.strokeRect(b[0],b[1],b[2]-b[0],b[3]-b[1]);ctx.restore()}}
 }
-function moveA(a,dx,dy){if(a.t==='edit'){a.x+=dx;a.y+=dy}else if(a.t==='ink')a.s.forEach(st=>st.forEach(p=>{p[0]+=dx;p[1]+=dy}));else if(a.a){a.a=[a.a[0]+dx,a.a[1]+dy];a.b=[a.b[0]+dx,a.b[1]+dy]}else{a.x+=dx;a.y+=dy}}
+function moveA(a,dx,dy){if(a.t==='edit'||a.t==='tblock'){a.x+=dx;a.y+=dy}else if(a.t==='ink')a.s.forEach(st=>st.forEach(p=>{p[0]+=dx;p[1]+=dy}));else if(a.a){a.a=[a.a[0]+dx,a.a[1]+dy];a.b=[a.b[0]+dx,a.b[1]+dy]}else{a.x+=dx;a.y+=dy}}
 function hitTest(e,pg,sx,sy){const R=rot(pg);for(let i=pg.annots.length-1;i>=0;i--){const b=bbox(pg.annots[i],e.vp,R);if(sx>=b[0]-4&&sx<=b[2]+4&&sy>=b[1]-4&&sy<=b[3]+4)return i}return -1}
 
 /* ---------------- pointer on pages ---------------- */
@@ -650,18 +657,12 @@ function onDown(ev,e){
   const vp=e.vp,[sx,sy]=loc(ev,e),P=vp.convertToPdfPoint(sx,sy);
   try{e.c2.setPointerCapture(ev.pointerId)}catch(_){}
   S.cur=S.pages.indexOf(pg);
-  if(t==='select'){const h=hitTest(e,pg,sx,sy);setSel(h>=0?{pid:pg.id,i:h}:null);if(h>=0){S.undo.push(JSON.stringify(S.pages));drag={mode:'move',e,last:[sx,sy],moved:false}}return}
+  if(t==='select'||t==='edittext'){
+    const h=hitTest(e,pg,sx,sy);
+    if(h>=0&&t==='edittext'&&['tblock','edit'].includes(pg.annots[h].t)){editAnnot(e,pg,h);return}
+    if(h>=0&&t==='select'){if(S.msel)setMsel(null);setSel({pid:pg.id,i:h});S.undo.push(JSON.stringify(S.pages));drag={mode:'move',e,last:[sx,sy],moved:false};return}
+    if(S.sel)setSel(null);ensureText(e,pg);drag={mode:'marq',e,start:[sx,sy],end:[sx,sy]};drawOverlay(e);return}
   if(S.sel)setSel(null);
-  if(t==='edittext'){
-    const h=hitTest(e,pg,sx,sy);if(h>=0&&pg.annots[h].t==='edit'){const A=pg.annots[h];openEditText(A,(o)=>{snapshot();Object.assign(getPg(pg.id).annots[h],o);drawOverlay(e)});return}
-    if(!e.tit){toast('Reading this page… tap again in a moment');if(!e.tload){e.tload=1;getTC(pg).then(tc=>{e.tit=tItems(tc);drawOverlay(e)})}return}
-    let best=null,ba=1e18;
-    for(const it of e.tit){const dx=P[0]-it.x,dy=P[1]-it.y,c=Math.cos(it.ang),sn=Math.sin(it.ang),u=dx*c+dy*sn,v=-dx*sn+dy*c;
-      if(u>=-2&&u<=it.w+2&&v>=-it.size*.3&&v<=it.size*1.05){const ar=it.w*it.size;if(ar<ba){ba=ar;best=it}}}
-    if(!best){toast('No text there. Tap directly on a line of text.');return}
-    const col=sampleColors(e,best),fi=fontInfo(pg,best);
-    const init={ox:best.x,oy:best.y,ang:best.ang*180/Math.PI,cw:best.w,cs:best.size,x:best.x,y:best.y,text:best.str,size:Math.round(best.size*10)/10,color:col.fg,bg:col.bg,fam:fi.fam,b:fi.b,i:fi.i,orig:best.str};
-    openEditText(init,(o)=>{snapshot();getPg(pg.id).annots.push(Object.assign({t:'edit'},init,o));drawOverlay(e)},true);return}
   if(t==='pen'){snapshot();const a={t:'ink',s:[[P]],color:S.colors.pen,w:S.widths.pen};pg.annots.push(a);drag={mode:'ink',e,a,last:[sx,sy]};drawOverlay(e);return}
   if(['hl','wo','rect','ellipse','line','arrow'].includes(t)){snapshot();const a={t,a:P,b:P,color:t==='wo'?'#ffffff':t==='hl'?S.colors.hl:S.colors.shape,w:S.widths.shape};if(t==='hl'||t==='wo')delete a.w;pg.annots.push(a);drag={mode:'shape',e,a,start:[sx,sy]};return}
   if(t==='text'){openText(null,(txt,size,color)=>{snapshot();const tl=vp.convertToPdfPoint(sx,sy-size*S.scale*.6);pg.annots.push({t:'text',x:tl[0],y:tl[1],R:rot(pg),text:txt,size,color});drawOverlay(e);setSel({pid:pg.id,i:pg.annots.length-1})});return}
@@ -681,11 +682,13 @@ function onMove(ev,e){
     if(drag.mode==='move'){const a=pg.annots[S.sel.i];const p0=vp.convertToPdfPoint(...drag.last),p1=vp.convertToPdfPoint(sx,sy);moveA(a,p1[0]-p0[0],p1[1]-p0[1]);drag.last=[sx,sy];drag.moved=true}
     else if(drag.mode==='ink'){if(Math.hypot(sx-drag.last[0],sy-drag.last[1])<1.2)continue;drag.a.s[0].push(vp.convertToPdfPoint(sx,sy));drag.last=[sx,sy]}
     else if(drag.mode==='shape'){drag.a.b=vp.convertToPdfPoint(sx,sy);drag.end=[sx,sy]}
+    else if(drag.mode==='marq'){drag.end=[sx,sy]}
   }
   drawOverlay(e);
 }
 function onUp(ev,e){
   if(!drag||drag.e!==e)return;const pg=getPg(e.id);
+  if(drag.mode==='marq'){const d=drag;drag=null;drawOverlay(e);finishMarq(e,pg,d);return}
   if(drag.mode==='move'&&!drag.moved)S.undo.pop();
   if(drag.mode==='shape'){const en=drag.end||drag.start;if(Math.abs(en[0]-drag.start[0])<4&&Math.abs(en[1]-drag.start[1])<4){pg.annots.pop();S.undo.pop()}}
   drag=null;drawOverlay(e);updateUI();
@@ -703,12 +706,12 @@ function setTool(t){
   if(t!=='place')S.pending=null;
   S.tool=t;
   $('#pages').className=t==='hand'?'hand':t==='select'?'select':t==='edittext'?'select':'';
-  if(t!=='select'&&S.sel)setSel(null);
+  if(t!=='select'&&S.sel)setSel(null);if(S.msel)setMsel(null);
   renderTools();renderProps();redrawAll();
 }
 function renderProps(){
   const t=S.tool,p=$('#props'),k=CKEY[t];let h='';
-  const hints={hand:'Drag to scroll. Pick a tool below to edit.',select:'Tap an item to move, resize, edit or delete it.',wo:'Drag over anything to cover it with white.',edittext:'Tap any text in the PDF to change or delete it.',place:'Tap on a page to place it.'};
+  const hints={hand:'Drag to scroll. Pick a tool below to edit.',select:'Tap a paragraph or item to select it. Drag a box to select several lines or items.',wo:'Drag over anything to cover it with white.',edittext:'Tap a paragraph to edit it, or drag across exactly the lines you want.',place:'Tap on a page to place it.'};
   if(k){const pal=t==='hl'?HLC:INK;h+=`<div class="sw">${pal.map(c=>`<button data-c="${c}" style="background:${c}" class="${S.colors[k]===c?'on':''}"></button>`).join('')}</div>`;
     if(t==='pen'||k==='shape')h+=`<input type="range" id="pW" min="0.5" max="12" step="0.5" value="${S.widths[t==='pen'?'pen':'shape']}"><span class="val" id="pWv">${S.widths[t==='pen'?'pen':'shape']} pt</span>`;
     if(t==='text')h+=`<input type="range" id="pW" min="6" max="48" step="1" value="${S.fontSize}"><span class="val" id="pWv">${S.fontSize} pt</span><span class="hint">Tap a page to type</span>`;
@@ -721,19 +724,29 @@ function renderProps(){
   const c=$('#pCancel');if(c)c.onclick=()=>setTool('select');
 }
 function renderSelbar(){
-  const b=$('#selbar');const a=S.sel&&(getPg(S.sel.pid)||{annots:[]}).annots[S.sel.i];
+  const b=$('#selbar');
+  if(S.msel){const m=S.msel,nl=m.lines.length,na=m.ann.length;b.innerHTML=`<span style="padding:0 8px;font-size:12px;opacity:.75;align-self:center">${nl?nl+' line'+(nl>1?'s':''):''}${nl&&na?' · ':''}${na?na+' item'+(na>1?'s':''):''}</span>`+(nl?`<button data-a="medit">${icon('edit')}Edit</button>`:'')+`<button data-a="mdel">${icon('trash')}Delete</button><button data-a="mclose" title="Clear selection">${icon('x')}</button>`;b.classList.add('on');return}
+  const a=S.sel&&(getPg(S.sel.pid)||{annots:[]}).annots[S.sel.i];
   if(!a){b.classList.remove('on');b.innerHTML='';return}
-  b.innerHTML=(a.t==='text'||a.t==='edit'?`<button data-a="edit">${icon('edit')}Edit</button>`:'')+
+  b.innerHTML=(a.t==='text'||a.t==='edit'||a.t==='tblock'?`<button data-a="edit">${icon('edit')}Edit</button>`:'')+
    `<button data-a="smaller" title="Smaller">${icon('smaller')}</button><button data-a="bigger" title="Bigger">${icon('bigger')}</button><button data-a="dup" title="Duplicate">${icon('copy')}</button><button data-a="del">${icon('trash')}Delete</button>`;
   b.classList.add('on');
 }
 $('#selbar').addEventListener('click',ev=>{
-  const btn=ev.target.closest('button[data-a]');if(!btn||!S.sel)return;const pg=getPg(S.sel.pid),a=pg.annots[S.sel.i],e=els.get(pg.id);if(!a)return;const act=btn.dataset.a;
+  const btn=ev.target.closest('button[data-a]');if(!btn)return;
+  if(S.msel){const m=S.msel,pg=getPg(m.pid),e=els.get(m.pid),act=btn.dataset.a;if(!pg||!e){setMsel(null);return}
+    if(act==='mclose'){setMsel(null);return}
+    if(act==='medit'){setMsel(null);openBlockFromLines(e,pg,m.lines);return}
+    if(act==='mdel'){snapshot();[...m.ann].sort((x,y)=>y-x).forEach(i=>pg.annots.splice(i,1));if(m.lines.length){const a=initFromLines(e,pg,m.lines);a.text='';a.lines=[];pg.annots.push(a)}setMsel(null);drawOverlay(e);return}
+    return}
+  if(!S.sel)return;const pg=getPg(S.sel.pid),a=pg.annots[S.sel.i],e=els.get(pg.id);if(!a)return;const act=btn.dataset.a;
   if(act==='del'){snapshot();pg.annots.splice(S.sel.i,1);setSel(null);drawOverlay(e);return}
+  if(act==='edit'&&a.t==='tblock'){editAnnot(e,pg,S.sel.i);return}
   if(act==='edit'&&a.t==='edit'){const i=S.sel.i;openEditText(a,(o)=>{snapshot();Object.assign(getPg(pg.id).annots[i],o);drawOverlay(e)});return}
   if(act==='edit'){openText(a,(txt,size,color)=>{snapshot();const A=getPg(pg.id).annots[S.sel.i];A.text=txt;A.size=size;A.color=color;drawOverlay(e)});return}
   if(act==='dup'){snapshot();const c=JSON.parse(JSON.stringify(a));moveA(c,12,-12);pg.annots.push(c);setSel({pid:pg.id,i:pg.annots.length-1});drawOverlay(e);return}
   const f=act==='bigger'?1.15:1/1.15;snapshot();
+  if(a.t==='tblock'){a.size=Math.max(4,Math.round(a.size*f*10)/10);a.lead*=f;layoutTB(a);drawOverlay(e);return}
   if(a.t==='text'||a.t==='edit')a.size=Math.max(4,Math.round(a.size*f*10)/10);
   else if(a.t==='img'){a.w*=f;a.h*=f}
   else if(a.t==='ink'||a.t==='hl'||a.t==='wo'||a.a&&!a.w){
@@ -872,6 +885,9 @@ async function exportPdf(){
         if(a.t==='arrow'){const g=Math.atan2(a.b[1]-a.a[1],a.b[0]-a.a[0]),L=6+a.w*2.5;for(const s of[-1,1])page.drawLine({start:{x:a.b[0],y:a.b[1]},end:{x:a.b[0]-L*Math.cos(g+s*.5),y:a.b[1]-L*Math.sin(g+s*.5)},...o})}}
       else if(a.t==='text'){const r=a.R*Math.PI/180,dn=[Math.sin(r),-Math.cos(r)];
         a.text.split('\n').forEach((ln,i)=>{const off=a.size*.8+i*a.size*1.2;page.drawText(safe(ln),{x:a.x+dn[0]*off,y:a.y+dn[1]*off,size:a.size,font,color:C(a.color),rotate:degrees(a.R)})})}
+      else if(a.t==='tblock'){for(const c of a.covers)page.drawRectangle({x:c[0],y:c[1],width:c[2]-c[0],height:c[3]-c[1],color:C(a.bg)});
+        if(a.lines&&a.lines.length){const fnt=await stdFont(a);a.lines.forEach((ln,i)=>{const st=[...ln].map(ch=>{try{fnt.encodeText(ch);return ch}catch(e){return '?'}}).join('');
+          const x=a.align==='center'?a.x+(a.w-fnt.widthOfTextAtSize(st,a.size))/2:a.x;page.drawText(st,{x,y:a.y-i*a.lead,size:a.size,font:fnt,color:C(a.color)})})}}
       else if(a.t==='edit'){const r=a.ang*Math.PI/180,u=[Math.cos(r),Math.sin(r)],v=[-Math.sin(r),Math.cos(r)];
         page.drawRectangle({x:a.ox-u[0]*1.5-v[0]*.3*a.cs,y:a.oy-u[1]*1.5-v[1]*.3*a.cs,width:a.cw+3,height:1.3*a.cs,color:C(a.bg),rotate:degrees(a.ang)});
         if(a.text){const fnt=await stdFont(a);const st=[...a.text].map(ch=>{try{fnt.encodeText(ch);return ch}catch(e){return '?'}}).join('');page.drawText(st,{x:a.x,y:a.y,size:a.size,font:fnt,color:C(a.color),rotate:degrees(a.ang)})}}
@@ -925,7 +941,7 @@ document.addEventListener('keydown',ev=>{
   if((ev.ctrlKey||ev.metaKey)&&ev.key.toLowerCase()==='z'){ev.preventDefault();ev.shiftKey?redo():undo()}
   else if((ev.ctrlKey||ev.metaKey)&&ev.key.toLowerCase()==='y'){ev.preventDefault();redo()}
   else if((ev.key==='Delete'||ev.key==='Backspace')&&S.sel){ev.preventDefault();$('#selbar [data-a="del"]').click()}
-  else if(ev.key==='Escape'){if(S.sel)setSel(null);closeModal()}
+  else if(ev.key==='Escape'){if(S.sel)setSel(null);if(S.msel)setMsel(null);closeModal()}
 });
 const V=$('#viewer');
 V.addEventListener('dragover',e=>{e.preventDefault()});
@@ -1067,6 +1083,122 @@ $('#crFull').onclick=()=>{const c=SC.pages[SC.edit].c;SC.q=[[0,0],[c.width,0],[c
 $('#crRotB').onclick=()=>{SC.rot=(SC.rot+90)%360;renderFilters()};
 $('#crDel').onclick=()=>{SC.pages.splice(SC.edit,1);$('#crop').classList.remove('on');renderScan()};
 $('#crDone').onclick=async()=>{const p=SC.pages[SC.edit];p.q=SC.q.map(x=>[...x]);p.rot=SC.rot;p.filter=SC.filter;busy('Cleaning up page…');try{await processScan(p)}catch(e){console.error(e);toast('Could not process that page')}unbusy();$('#crop').classList.remove('on');renderScan()};
+
+/* ---------------- text structure: lines & paragraphs ---------------- */
+function ensureText(e,pg){if(!e.tit&&!e.tload){e.tload=1;getTC(pg).then(tc=>{e.tit=tItems(tc);e.tb=null;if(els.get(e.id)===e)drawOverlay(e)})}}
+function buildLines(items){
+  const hz=items.filter(it=>Math.abs(it.ang)<.03).sort((a,b)=>b.y-a.y||a.x-b.x),lines=[];
+  for(const it of hz){
+    let L=null;
+    for(let k=lines.length-1;k>=0&&k>=lines.length-60;k--){const l=lines[k],sz=Math.max(l.size,it.size);
+      if(Math.abs(l.y-it.y)<sz*.35&&it.size/l.size<1.45&&l.size/it.size<1.45&&it.x-l.x1<sz*1.6&&it.x+it.w>l.x0-sz){L=l;break}}
+    if(L){L.items.push(it);L.x0=Math.min(L.x0,it.x);L.x1=Math.max(L.x1,it.x+it.w);L.size=Math.max(L.size,it.size)}
+    else lines.push({x0:it.x,x1:it.x+it.w,y:it.y,size:it.size,items:[it]});
+  }
+  for(const l of lines){l.items.sort((a,b)=>a.x-b.x);let s='',end=null;
+    for(const it of l.items){if(end!==null&&it.x-end>it.size*.15&&!/\s$/.test(s)&&!/^\s/.test(it.str))s+=' ';s+=it.str;end=it.x+it.w}
+    l.str=s.replace(/\s+/g,' ').trim()}
+  return lines.filter(l=>l.str);
+}
+function buildBlocks(lines){
+  const ls=[...lines].sort((a,b)=>b.y-a.y||a.x0-b.x0),blocks=[];
+  for(const L of ls){
+    let B=null;
+    for(const b of blocks){const last=b.lines[b.lines.length-1],dy=last.y-L.y,sz=Math.max(last.size,L.size);
+      if(dy<Math.min(last.size,L.size)*.75||dy>sz*1.9)continue;
+      if(L.size/last.size>1.25||last.size/L.size>1.25)continue;
+      if(b.lead&&Math.abs(dy-b.lead)>sz*.35)continue;
+      if(Math.min(L.x1,b.x1)-Math.max(L.x0,b.x0)<=0)continue;
+      const leftAl=Math.abs(L.x0-b.x0)<sz*1.5,ctrAl=Math.abs((L.x0+L.x1)/2-(b.x0+b.x1)/2)<sz*1.5,indent=b.lines.length===1&&L.x0<b.x0&&b.x0-L.x0<sz*4;
+      if(!(leftAl||ctrAl||indent))continue;B=b;break}
+    if(B){B.lead=B.lead||(B.lines[B.lines.length-1].y-L.y);B.lines.push(L);B.x0=Math.min(B.x0,L.x0);B.x1=Math.max(B.x1,L.x1)}
+    else blocks.push({lines:[L],x0:L.x0,x1:L.x1,lead:0});
+  }
+  return blocks;
+}
+function textStruct(e){if(!e.tit)return null;if(!e.tb){const lines=buildLines(e.tit);e.tb={lines,blocks:buildBlocks(lines)}}return e.tb}
+const lineRect=l=>[l.x0-1.5,l.y-l.size*.3,l.x1+1.5,l.y+l.size*1.02];
+function scrRect(e,r){const P=[[r[0],r[1]],[r[2],r[1]],[r[2],r[3]],[r[0],r[3]]].map(p=>e.vp.convertToViewportPoint(p[0],p[1]));const xs=P.map(p=>p[0]),ys=P.map(p=>p[1]);return[Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys)]}
+function lineAt(tb,P){let best=null,ba=1e18;for(const l of tb.lines){const r=lineRect(l);if(P[0]>=r[0]&&P[0]<=r[2]&&P[1]>=r[1]&&P[1]<=r[3]){const ar=(r[2]-r[0])*(r[3]-r[1]);if(ar<ba){ba=ar;best=l}}}return best}
+function initFromLines(e,pg,lines){
+  const L=[...lines].sort((a,b)=>b.y-a.y||a.x0-b.x0);
+  const sizes=L.map(l=>l.size).sort((a,b)=>a-b),size=sizes[sizes.length>>1];
+  const rows=[];for(const l of L){const r=rows.find(r=>Math.abs(r.y-l.y)<size*.35);if(r)r.ls.push(l);else rows.push({y:l.y,ls:[l]})}
+  rows.forEach(r=>{r.ls.sort((a,b)=>a.x0-b.x0);r.str=r.ls.map(l=>l.str).join('   ')});
+  const first=rows[0],last=rows[rows.length-1];
+  let lead=rows.length>1?(first.y-last.y)/(rows.length-1):size*1.2;lead=Math.max(size*.95,Math.min(size*2.5,lead));
+  const lefts=rows.map(r=>r.ls[0].x0),rights=rows.map(r=>r.ls[r.ls.length-1].x1),x0=Math.min(...lefts),x1=Math.max(...rights);
+  const cs=rows.map((r,i)=>(lefts[i]+rights[i])/2),spreadL=Math.max(...lefts)-x0,spreadC=Math.max(...cs)-Math.min(...cs);
+  const align=rows.length>1&&spreadL>size*1.5&&spreadC<size*1.2?'center':'left';
+  const col=sampleColors(e,{x:x0,y:first.y,w:x1-x0,size,ang:0}),fi=fontInfo(pg,first.ls[0].items[0]);
+  const text=rows.map(r=>r.str).join('\n');
+  const a={t:'tblock',covers:L.map(lineRect),x:x0,y:first.y,w:x1-x0,size:Math.round(size*2)/2,lead,text,orig:text,color:col.fg,bg:col.bg,fam:fi.fam,b:fi.b,i:fi.i,align};
+  layoutTB(a);return a;
+}
+function layoutTB(a){
+  if(!a.text){a.lines=[];return}
+  mctx.font=EFONT(a,a.size);const maxW=a.w*1.04+1,orig=new Set((a.orig||'').split('\n')),out=[];
+  for(const para of a.text.split('\n')){
+    if(orig.has(para)||mctx.measureText(para).width<=maxW){out.push(para);continue}
+    let cur='';for(const w of para.split(' ')){const t=cur?cur+' '+w:w;if(cur&&mctx.measureText(t).width>maxW){out.push(cur);cur=w}else cur=t}out.push(cur)}
+  a.lines=out;
+}
+function tbExtents(a){mctx.font=EFONT(a,a.size);return(a.lines||[]).map((ln,i)=>{const tw=mctx.measureText(ln).width,off=a.align==='center'?(a.w-tw)/2:0;return{x:a.x+off,y:a.y-i*a.lead,tw}})}
+function openBlockFromLines(e,pg,lines){
+  const init=initFromLines(e,pg,lines);
+  openBlockEdit(init,o=>{snapshot();const a=Object.assign({},init,o);layoutTB(a);getPg(pg.id).annots.push(a);drawOverlay(e)},true);
+}
+function editAnnot(e,pg,h){
+  const A=pg.annots[h];
+  if(A.t==='tblock')openBlockEdit(A,o=>{snapshot();const T=getPg(pg.id).annots[h];Object.assign(T,o);layoutTB(T);drawOverlay(e)});
+  else openEditText(A,o=>{snapshot();Object.assign(getPg(pg.id).annots[h],o);drawOverlay(e)});
+}
+function openBlockEdit(a,ok,isNew){
+  let o={text:a.text,size:a.size,color:a.color,fam:a.fam||'sans',b:!!a.b,i:!!a.i,align:a.align||'left'};
+  const pal=[...new Set([a.color,...INK])],rows=Math.min(10,Math.max(3,a.text.split('\n').length+1));
+  const m=openModal(`<h3>${isNew?'Edit text':'Edit your change'}</h3>
+   <textarea id="bTxt" rows="${rows}">${esc(o.text)}</textarea>
+   <div class="row"><label>Size</label><input type="range" id="bSize" min="4" max="72" step=".5" value="${o.size}"><span class="small" id="bSv">${o.size} pt</span></div>
+   <div class="row"><select id="bFam" style="flex:1;padding:9px;border:1px solid var(--line);border-radius:10px;font:inherit"><option value="sans">Sans (Helvetica)</option><option value="serif">Serif (Times)</option><option value="mono">Mono (Courier)</option></select>
+    <button class="btn" id="bB" style="font-weight:800;min-width:42px">B</button><button class="btn" id="bI" style="font-style:italic;min-width:42px">I</button><button class="btn" id="bAl" style="min-width:42px"></button></div>
+   <div class="sw" id="bSw">${pal.map(c=>`<button data-c="${c}" style="background:${c}"></button>`).join('')}</div>
+   <p class="small">Each line break starts a new line. Longer lines wrap to fit the original width.</p>
+   <div class="btns"><button class="btn red l" id="bDel">Delete text</button><button class="btn" data-x>Cancel</button><button class="btn pri" id="bOk">Apply</button></div>`);
+  $('#bFam').value=o.fam;
+  const tg=()=>{$('#bB').style.background=o.b?'#e6f4f2':'#fff';$('#bI').style.background=o.i?'#e6f4f2':'#fff';$('#bAl').textContent=o.align==='center'?'≡ Ctr':'≡ Left';m.querySelectorAll('#bSw button').forEach(b=>b.classList.toggle('on',b.dataset.c===o.color))};tg();
+  $('#bB').onclick=()=>{o.b=!o.b;tg()};$('#bI').onclick=()=>{o.i=!o.i;tg()};$('#bAl').onclick=()=>{o.align=o.align==='center'?'left':'center';tg()};
+  m.querySelectorAll('#bSw button').forEach(b=>b.onclick=()=>{o.color=b.dataset.c;tg()});
+  $('#bSize').oninput=ev=>{o.size=+ev.target.value;$('#bSv').textContent=o.size+' pt'};$('#bFam').onchange=ev=>{o.fam=ev.target.value};
+  setTimeout(()=>$('#bTxt').focus(),60);
+  const fin=()=>{o.lead=a.lead*o.size/a.size;closeModal();ok(o)};
+  $('#bDel').onclick=()=>{o.text='';fin()};
+  $('#bOk').onclick=()=>{o.text=$('#bTxt').value.replace(/\s+$/,'');if(isNew&&o.text===a.text&&o.size===a.size&&o.color===a.color&&o.fam===a.fam&&o.b===a.b&&o.i===a.i&&o.align===a.align){closeModal();return}fin()};
+}
+function editRotatedAt(e,pg,P){
+  let best=null,ba=1e18;
+  for(const it of e.tit||[]){if(Math.abs(it.ang)<.03)continue;const dx=P[0]-it.x,dy=P[1]-it.y,c=Math.cos(it.ang),sn=Math.sin(it.ang),u=dx*c+dy*sn,v=-dx*sn+dy*c;
+    if(u>=-2&&u<=it.w+2&&v>=-it.size*.3&&v<=it.size*1.05){const ar=it.w*it.size;if(ar<ba){ba=ar;best=it}}}
+  if(!best)return false;
+  const col=sampleColors(e,best),fi=fontInfo(pg,best);
+  const init={ox:best.x,oy:best.y,ang:best.ang*180/Math.PI,cw:best.w,cs:best.size,x:best.x,y:best.y,text:best.str,size:Math.round(best.size*10)/10,color:col.fg,bg:col.bg,fam:fi.fam,b:fi.b,i:fi.i,orig:best.str};
+  openEditText(init,o=>{snapshot();getPg(pg.id).annots.push(Object.assign({t:'edit'},init,o));drawOverlay(e)},true);return true;
+}
+function setMsel(m){const prev=S.msel;S.msel=m;if(m&&S.sel)S.sel=null;[prev&&prev.pid,m&&m.pid].forEach(id=>{if(id&&els.get(id))drawOverlay(els.get(id))});renderSelbar()}
+function finishMarq(e,pg,d){
+  if(!e.tit){ensureText(e,pg);toast('Reading this page… try again in a moment');return}
+  const tb=textStruct(e),tap=Math.hypot(d.end[0]-d.start[0],d.end[1]-d.start[1])<8;let lines=[],ann=[];
+  if(tap){const P=e.vp.convertToPdfPoint(...d.start),L=lineAt(tb,P);
+    if(L){const B=tb.blocks.find(b=>b.lines.includes(L));lines=B?B.lines:[L]}
+    else if(S.tool==='edittext'){if(!editRotatedAt(e,pg,P))toast('No text there. Tap a paragraph, or drag across the lines you want.');return}
+    else{setMsel(null);return}}
+  else{const x0=Math.min(d.start[0],d.end[0]),x1=Math.max(d.start[0],d.end[0]),y0=Math.min(d.start[1],d.end[1]),y1=Math.max(d.start[1],d.end[1]);
+    lines=tb.lines.filter(l=>{const r=scrRect(e,lineRect(l)),cx=(r[0]+r[2])/2,cy=(r[1]+r[3])/2;return cx>=x0&&cx<=x1&&cy>=y0&&cy<=y1});
+    if(S.tool==='select')pg.annots.forEach((a,i)=>{const b=bbox(a,e.vp,rot(pg));if(b[0]<x1&&b[2]>x0&&b[1]<y1&&b[3]>y0)ann.push(i)})}
+  if(S.tool==='edittext'){if(lines.length)openBlockFromLines(e,pg,lines);else toast('No text in that area');return}
+  if(!lines.length&&ann.length===1){setMsel(null);setSel({pid:pg.id,i:ann[0]});return}
+  if(!lines.length&&!ann.length){setMsel(null);return}
+  setMsel({pid:pg.id,lines,ann});
+}
 
 /* ---------------- edit existing text ---------------- */
 const tcCache=new Map();
