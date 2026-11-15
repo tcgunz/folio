@@ -329,7 +329,7 @@ body[data-theme=rose]{--acc:#be185d;--accd:#9d174d;--acc2:#fce7f3;--bg:#faf4f7;-
     <button data-m="rctoggle" id="mRc"><span class="ic" data-i="grid"></span><span id="mRcL">Hide Receipts &amp; expenses</span></button>
     <hr>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 51</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 52</div>
   </div>
 </div>
 
@@ -829,6 +829,9 @@ function drawOverlay(e){
     ctx.restore()}}
 }
 function moveA(a,dx,dy){if(a.t==='edit'||a.t==='tblock'){a.x+=dx;a.y+=dy}else if(a.t==='ink')a.s.forEach(st=>st.forEach(p=>{p[0]+=dx;p[1]+=dy}));else if(a.a){a.a=[a.a[0]+dx,a.a[1]+dy];a.b=[a.b[0]+dx,a.b[1]+dy]}else{a.x+=dx;a.y+=dy}}
+function annSize(a){if(a.t==='img')return[a.w,a.h];mctx.font=FONT(a.size);const ls=String(a.text||'').split('\n');return[Math.max(4,...ls.map(l=>mctx.measureText(l).width)),ls.length*a.size*1.2]}
+function annCenter(a){const r=a.R*Math.PI/180,[w,h]=annSize(a);return[a.x+Math.cos(r)*w/2+Math.sin(r)*h/2,a.y+Math.sin(r)*w/2-Math.cos(r)*h/2]}
+function setAnnCenter(a,c){const r=a.R*Math.PI/180,[w,h]=annSize(a);a.x=c[0]-Math.cos(r)*w/2-Math.sin(r)*h/2;a.y=c[1]-Math.sin(r)*w/2+Math.cos(r)*h/2}
 function scaleFrom(o,a,k,c){const F=p=>[c[0]+(p[0]-c[0])*k,c[1]+(p[1]-c[1])*k];
   if(o.t==='ink')a.s=o.s.map(st=>st.map(F));
   else if(o.a){a.a=F(o.a);a.b=F(o.b)}
@@ -944,7 +947,7 @@ function renderSelbar(){
   if(S.msel){const m=S.msel,nl=m.lines.length,na=m.ann.length;b.innerHTML=`<span style="padding:0 8px;font-size:12px;opacity:.75;align-self:center">${nl?nl+' line'+(nl>1?'s':''):''}${nl&&na?' · ':''}${na?na+' item'+(na>1?'s':''):''}</span>`+(nl?`<button data-a="medit">${icon('edit')}Edit</button>`:'')+`<button data-a="mdel">${icon('trash')}Delete</button><button data-a="mclose" title="Clear selection">${icon('x')}</button>`;b.classList.add('on');return}
   const a=S.sel&&(getPg(S.sel.pid)||{annots:[]}).annots[S.sel.i];
   if(!a){b.classList.remove('on');b.innerHTML='';return}
-  b.innerHTML=(a.t==='img'?`<button data-a="fit" title="Fit the page">${icon('fit')}Fit</button><button data-a="fill" title="Fill the page">${icon('fill')}Fill</button>`:'')+(a.t==='text'||a.t==='edit'||a.t==='tblock'?`<button data-a="edit">${icon('edit')}Edit</button>`:'')+
+  b.innerHTML=(a.t==='img'?`<button data-a="fit" title="Fit the page">${icon('fit')}Fit</button><button data-a="fill" title="Fill the page">${icon('fill')}Fill</button>`:'')+(a.t==='img'||a.t==='text'?`<button data-a="rot" title="Rotate 90°">${icon('rotR')}Rotate</button>`:'')+(a.t==='text'||a.t==='edit'||a.t==='tblock'?`<button data-a="edit">${icon('edit')}Edit</button>`:'')+
    `<button data-a="smaller" title="Smaller">${icon('smaller')}</button><button data-a="bigger" title="Bigger">${icon('bigger')}</button><button data-a="dup" title="Duplicate">${icon('copy')}</button><button data-a="del">${icon('trash')}Delete</button>`;
   b.classList.add('on');
 }
@@ -957,9 +960,10 @@ $('#selbar').addEventListener('click',ev=>{
     return}
   if(!S.sel)return;const pg=getPg(S.sel.pid),a=pg.annots[S.sel.i],e=els.get(pg.id);if(!a)return;const act=btn.dataset.a;
   if(act==='del'){snapshot();pg.annots.splice(S.sel.i,1);setSel(null);drawOverlay(e);return}
-  if((act==='fit'||act==='fill')&&a.t==='img'){snapshot();const vp=e.vp,pw=vp.width/S.scale,ph=vp.height/S.scale,r=a.w/a.h;
-    let w,h;if(act==='fit'){w=Math.min(pw,ph*r);h=w/r}else{w=Math.max(pw,ph*r);h=w/r}
-    const left=(pw-w)/2,top=(ph-h)/2,tl=vp.convertToPdfPoint(left*S.scale,top*S.scale);a.x=tl[0];a.y=tl[1];a.w=w;a.h=h;a.R=rot(pg);
+  if(act==='rot'&&(a.t==='img'||a.t==='text')){snapshot();const c=annCenter(a);a.R=((a.R-90)%360+360)%360;setAnnCenter(a,c);drawOverlay(e);return}
+  if((act==='fit'||act==='fill')&&a.t==='img'){snapshot();const vp=e.vp,pw=vp.width/S.scale,ph=vp.height/S.scale,rel=((rot(pg)-a.R)%360+360)%360,sw=rel===90||rel===270;
+    const vw=sw?a.h:a.w,vh=sw?a.w:a.h,r=vw/vh;let nw,nh;if(act==='fit'){nw=Math.min(pw,ph*r);nh=nw/r}else{nw=Math.max(pw,ph*r);nh=nw/r}
+    if(sw){a.w=nh;a.h=nw}else{a.w=nw;a.h=nh}setAnnCenter(a,vp.convertToPdfPoint(pw/2*S.scale,ph/2*S.scale));
     drawOverlay(e);toast(act==='fit'?'Fitted to the page':'Filled the page (edges past the page are trimmed when saved)',2500);return}
   if(act==='edit'&&a.t==='tblock'){editAnnot(e,pg,S.sel.i);return}
   if(act==='edit'&&a.t==='edit'){const i=S.sel.i;openEditText(a,(o)=>{snapshot();Object.assign(getPg(pg.id).annots[i],o);drawOverlay(e)});return}
