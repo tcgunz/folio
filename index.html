@@ -268,7 +268,7 @@ table.xs tfoot td{font-weight:700;padding:10px 8px;background:#f9fafb}
     <button data-m="rctoggle" id="mRc"><span class="ic" data-i="grid"></span><span id="mRcL">Hide Receipts &amp; expenses</span></button>
     <hr>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 37</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 38</div>
   </div>
 </div>
 
@@ -320,7 +320,7 @@ table.xs tfoot td{font-weight:700;padding:10px 8px;background:#f9fafb}
   <div class="chips" id="libChips"></div>
   <div id="libFolderTools" style="display:none;gap:14px;padding:6px 14px 0"><button class="link" id="libRenameF">Rename folder</button><button class="link" style="color:var(--danger)" id="libDeleteF">Delete folder</button></div>
   <div id="libGrid" style="flex:1;overflow:auto;padding:12px"></div>
-  <div class="sf lsel" id="libSelActs" style="border-top:1px solid var(--line);background:#fff"><button class="btn" id="libSelMove">Move</button><button class="btn" id="libSelMerge">Combine</button><button class="btn" id="libSelDl">Download</button><button class="btn red" id="libSelDel">Delete</button></div>
+  <div class="sf lsel" id="libSelActs" style="border-top:1px solid var(--line);background:#fff"><button class="btn" id="libSelMove">Move</button><button class="btn" id="libSelMerge">Combine</button><button class="btn" id="libSelShrink">Shrink</button><button class="btn" id="libSelDl">Download</button><button class="btn red" id="libSelDel">Delete</button></div>
   <div class="sf lnorm" style="border-top:1px solid var(--line);align-items:center"><span class="small" id="libUse" style="flex:1"></span><button class="btn pri rcx" id="libSheet">Spreadsheet</button><button class="btn" id="libCsv" style="display:none">Export CSV</button><button class="btn" id="libRestoreB">Restore</button><button class="btn" id="libBackup">Back up</button></div>
 </div>
 <div id="sheet">
@@ -1910,13 +1910,51 @@ async function libShare(d){
     if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:d.name});return}}catch(e){if(e&&e.name==='AbortError')return}
   toast("Sharing isn't available here, so it was downloaded instead");offerDownload(d.name+'.pdf',new Uint8Array(await d.blob.arrayBuffer()));
 }
+/* ---------------- reduce file size of saved PDFs ---------------- */
+async function shrinkPdf(bytes,qual,onPage){
+  const[maxSide,q]=qual==='small'?[1700,.72]:[2550,.8],L=PDFLib;
+  const pdf=await pdfjsLib.getDocument({data:bytes.slice(),isEvalSupported:false}).promise;
+  const out=await L.PDFDocument.create(),font=await out.embedFont(L.StandardFonts.Helvetica);
+  try{for(let i=1;i<=pdf.numPages;i++){onPage&&onPage(i,pdf.numPages);await tick();
+    const pg=await pdf.getPage(i),v=pg.view,W=v[2]-v[0],H=v[3]-v[1],sc=Math.min(4,maxSide/Math.max(W,H)),vp=pg.getViewport({scale:sc,rotation:0});
+    const c=document.createElement('canvas');c.width=Math.round(vp.width);c.height=Math.round(vp.height);const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);
+    await pg.render({canvasContext:x,viewport:vp}).promise;
+    const img=await out.embedJpg(dataBytes(c.toDataURL('image/jpeg',q)));c.width=c.height=1;
+    const np=out.addPage([W,H]);np.drawImage(img,{x:0,y:0,width:W,height:H});if(pg.rotate)np.setRotation(L.degrees(pg.rotate));
+    // keep the words searchable and editable (invisible text in the same places)
+    const tc=await pg.getTextContent();if(tc.items.length){np.pushOperators(L.pushGraphicsState(),L.setTextRenderingMode(L.TextRenderingMode.Invisible));
+      for(const it of tc.items){const s=[...(it.str||'')].map(ch=>{try{font.encodeText(ch);return ch}catch(e){return ''}}).join('').trim();if(!s)continue;
+        const t=it.transform,size=Math.hypot(t[2],t[3])||Math.hypot(t[0],t[1])||8,w=it.width||0,fw=font.widthOfTextAtSize(s,1)||1,fs=Math.max(1,w>0?Math.min(size*1.2,w/fw):size);
+        try{np.drawText(s,{x:t[4]-v[0],y:t[5]-v[1],size:fs,font,rotate:L.degrees(Math.atan2(t[1],t[0])*180/Math.PI)})}catch(e){}}
+      np.pushOperators(L.popGraphicsState())}}}
+  finally{try{pdf.destroy()}catch(e){}}
+  return out.save();
+}
+const fmtSize=b=>b>=1048576?(b/1048576).toFixed(1)+' MB':Math.max(1,Math.round(b/1024))+' KB';
+function askShrink(docs,done){
+  const total=docs.reduce((a,d)=>a+(d.size||0),0);
+  openModal(`<h3>Reduce file size</h3><p class="small" style="margin-top:-6px">${docs.length>1?`${docs.length} documents · `:''}${fmtSize(total)} now. Each page is re-saved as a picture at the size you choose. The words stay searchable and editable.</p>
+   <button class="big" id="shS" style="display:flex;gap:12px;align-items:center;width:100%;padding:14px;border:1px solid var(--line);border-radius:12px;background:#fff;text-align:left;margin-bottom:10px"><span><b>Small</b> · best for email<br><small style="color:var(--muted)">About 150 DPI, roughly 150–300 KB per page</small></span></button>
+   <button class="big" id="shM" style="display:flex;gap:12px;align-items:center;width:100%;padding:14px;border:1px solid var(--line);border-radius:12px;background:#fff;text-align:left"><span><b>Standard</b><br><small style="color:var(--muted)">About 230 DPI, roughly 400–700 KB per page</small></span></button>
+   <p class="small">Best for scans. PDFs made on a computer (with real text) are usually small already, and Folio keeps the original if shrinking doesn't help.</p>
+   <div class="btns"><button class="btn" data-x>Cancel</button></div>`);
+  const run=async qual=>{closeModal();let before=0,after=0,changed=0;
+    for(let k=0;k<docs.length;k++){const d=docs[k];busy(`Shrinking ${docs.length>1?`document ${k+1} of ${docs.length}, `:''}page 1…`);
+      try{const orig=new Uint8Array(await d.blob.arrayBuffer());before+=orig.length;
+        const nb=await shrinkPdf(orig,qual,(i,n)=>{$('#busyMsg').textContent=`Shrinking ${docs.length>1?`document ${k+1} of ${docs.length}, `:''}page ${i} of ${n}…`});
+        if(nb.length<orig.length*.9){const keep=d.receipt;await libSave(d.name,d.folder,nb,d.id);if(keep){const nd=await libGet(d.id);if(nd&&!nd.receipt){nd.receipt=keep;await libPut(nd)}}rvCache.delete(d.id);after+=nb.length;changed++}else after+=orig.length}
+      catch(e){console.error(e);toast(`Couldn't shrink “${d.name}”`)}}
+    unbusy();toast(changed?`Reduced from ${fmtSize(before)} to ${fmtSize(after)}`:'Already as small as it can usefully be, so nothing was changed',4500);done&&done()};
+  $('#shS').onclick=()=>run('small');$('#shM').onclick=()=>run('std');
+}
 async function libItemMenu(id){
   const d=LIB.docs.find(x=>x.id===id);if(!d)return;
   const m=openModal(`<div style="display:flex;gap:12px;align-items:center;margin-bottom:12px">${d.thumb?`<img src="${d.thumb}" style="width:56px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.2)">`:''}<div><h3 style="margin:0">${esc(d.name)}</h3><span class="small">${esc(d.folder)} · ${d.pages} page${d.pages>1?'s':''} · ${(d.size/1048576).toFixed(1)} MB</span></div></div>
-   <div class="lacts"><button class="btn pri" id="liOpen">${icon('pen')}Open</button><button class="btn" id="liDl">${icon('download')}Download</button><button class="btn" id="liShare">${icon('share')}Share / Save to…</button><button class="btn" id="liRc">${icon('form')}Receipt details</button><button class="btn" id="liRen">${icon('edit')}Rename</button><button class="btn" id="liMove">${icon('folder')}Move</button><button class="btn red" id="liDel">${icon('trash')}Delete</button></div>
+   <div class="lacts"><button class="btn pri" id="liOpen">${icon('pen')}Open</button><button class="btn" id="liDl">${icon('download')}Download</button><button class="btn" id="liShare">${icon('share')}Share / Save to…</button><button class="btn" id="liRc">${icon('form')}Receipt details</button><button class="btn" id="liRen">${icon('edit')}Rename</button><button class="btn" id="liMove">${icon('folder')}Move</button><button class="btn" id="liShrink">${icon('smaller')}Reduce size</button><button class="btn red" id="liDel">${icon('trash')}Delete</button></div>
    <div id="liExtra"></div><div class="btns"><button class="btn" data-x>Close</button></div>`);
   $('#liOpen').onclick=()=>{closeModal();libOpenDoc(d)};
   $('#liShare').onclick=()=>{closeModal();libShare(d)};
+  $('#liShrink').onclick=()=>{closeModal();setTimeout(()=>askShrink([d],renderLib),30)};
   $('#liRc').onclick=()=>{closeModal();setTimeout(()=>openReceiptDetails(d,false),30)};
   $('#liDl').onclick=async()=>{closeModal();offerDownload(d.name+'.pdf',new Uint8Array(await d.blob.arrayBuffer()))};
   $('#liRen').onclick=()=>{$('#liExtra').innerHTML=`<div class="row"><input type="text" id="liName" value="${esc(d.name)}"><button class="btn pri" id="liRenOk">Save</button></div>`;$('#liName').focus();
@@ -1949,6 +1987,7 @@ function libSelDocs(){const order=[...document.querySelectorAll('.lcard')].map(c
     const id=c.dataset.id;LIB.sel.has(id)?LIB.sel.delete(id):LIB.sel.add(id);libSelUpdate()},true);
 })();
 $('#libSelX').onclick=libSelEnd;
+$('#libSelShrink').onclick=()=>{const ds=libSelDocs();if(ds.length)askShrink(ds,()=>{libSelEnd();renderLib()})};
 $('#libSelAll').onclick=()=>{const ids=[...document.querySelectorAll('.lcard')].map(c=>c.dataset.id);const all=ids.every(id=>LIB.sel.has(id));LIB.sel=new Set(all?[]:ids);libSelUpdate()};
 $('#libSelDel').onclick=()=>{const ds=libSelDocs();if(!ds.length)return;
   openModal(`<h3>Delete ${ds.length} document${ds.length>1?'s':''}?</h3><p class="small">This can't be undone. Tip: use <b>Back up</b> first if you might want them later.</p><div class="btns"><button class="btn" data-x>Cancel</button><button class="btn red" id="msDel">Delete</button></div>`);
