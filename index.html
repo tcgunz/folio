@@ -240,6 +240,13 @@ table.xs tfoot td{font-weight:700;padding:10px 8px;background:#f9fafb}
 .chips button{padding:8px 14px;border-radius:20px;background:#1f2329;font-size:13px;white-space:nowrap}
 .chips button.on{background:#14b8a6;color:#04201d;font-weight:600}
 /* ===== design refresh + themes ===== */
+/* compact black bar: small icon above a small label, so every button fits */
+#selbar{padding:3px;gap:0;max-width:calc(100vw - 12px)}
+#selbar button{flex-direction:column;justify-content:center;gap:2px;height:48px;min-width:42px;padding:0 6px;font-size:10px;font-weight:600;letter-spacing:.01em;line-height:1}
+#selbar svg{width:18px!important;height:18px!important}
+#selbar .grip{height:48px;min-width:22px!important;width:22px}
+#selbar .grip svg{width:14px!important;height:14px!important}
+#selbar span{font-size:11px}
 :root{--accd:#3730a3;--sacc:#818cf8;--hdr:#fff}
 body[data-theme=indigo]{--acc:#4f46e5;--accd:#4338ca;--acc2:#eef2ff;--bg:#f2f3f9;--line:#e3e5ef;--sacc:#818cf8}
 body[data-theme=ocean]{--acc:#0284c7;--accd:#0369a1;--acc2:#e0f2fe;--bg:#eff5f9;--line:#dfe8ef;--sacc:#38bdf8}
@@ -329,7 +336,7 @@ body[data-theme=rose]{--acc:#be185d;--accd:#9d174d;--acc2:#fce7f3;--bg:#faf4f7;-
     <button data-m="rctoggle" id="mRc"><span class="ic" data-i="grid"></span><span id="mRcL">Hide Receipts &amp; expenses</span></button>
     <hr>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 53</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 54</div>
   </div>
 </div>
 
@@ -948,7 +955,7 @@ function renderSelbar(){
   const a=S.sel&&(getPg(S.sel.pid)||{annots:[]}).annots[S.sel.i];
   if(!a){b.classList.remove('on');b.innerHTML='';return}
   b.innerHTML=(a.t==='img'?`<button data-a="fit" title="Fit the page">${icon('fit')}Fit</button><button data-a="fill" title="Fill the page">${icon('fill')}Fill</button>`:'')+(a.t==='img'||a.t==='text'?`<button data-a="rot" title="Rotate 90°">${icon('rotR')}Rotate</button>`:'')+(a.t==='text'||a.t==='edit'||a.t==='tblock'?`<button data-a="edit">${icon('edit')}Edit</button>`:'')+
-   `<button data-a="smaller" title="Smaller">${icon('smaller')}</button><button data-a="bigger" title="Bigger">${icon('bigger')}</button><button data-a="dup" title="Duplicate">${icon('copy')}</button><button data-a="del">${icon('trash')}Delete</button>`;
+   `<button data-a="smaller" title="Smaller">${icon('smaller')}Smaller</button><button data-a="bigger" title="Bigger">${icon('bigger')}Bigger</button><button data-a="dup" title="Duplicate">${icon('copy')}Copy</button><button data-a="del">${icon('trash')}Delete</button>`;
   b.classList.add('on');
 }
 $('#selbar').addEventListener('click',ev=>{
