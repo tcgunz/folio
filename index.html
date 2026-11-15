@@ -175,7 +175,7 @@ table.xs td{border-bottom:1px solid #eef0f2;padding:2px 4px}
 table.xs input,table.xs select{width:100%;border:1px solid transparent;background:transparent;padding:8px 6px;font:inherit;font-size:14px;border-radius:6px;color:var(--ink)}
 table.xs input:focus,table.xs select:focus{border-color:var(--acc);background:#fff;outline:none}
 table.xs .num,table.xs .num input{text-align:right}
-table.xs td:nth-child(2){min-width:130px}table.xs td:nth-child(3){min-width:130px}table.xs td:nth-child(4){min-width:170px}table.xs td:nth-child(5){min-width:150px}table.xs td:nth-child(6){min-width:105px}table.xs td:nth-child(7),table.xs td:nth-child(8),table.xs td:nth-child(9){min-width:80px}
+table.xs td:nth-child(2){min-width:130px}table.xs td:nth-child(3){min-width:130px}table.xs td:nth-child(4){min-width:170px}table.xs td:nth-child(5){min-width:150px}table.xs td:nth-child(6){min-width:105px}table.xs td:nth-child(n+7){min-width:78px}
 table.xs tfoot td{font-weight:700;padding:10px 8px;background:#f9fafb}
 .xth{width:34px;height:44px;border-radius:5px;overflow:hidden;background:#f3f4f6;display:grid;place-items:center}
 .xth img{width:100%;height:100%;object-fit:cover}
@@ -260,7 +260,7 @@ table.xs tfoot td{font-weight:700;padding:10px 8px;background:#f9fafb}
     <button data-m="region"><span class="ic" data-i="globe"></span>Region &amp; currency</button>
     <hr>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 32</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 33</div>
   </div>
 </div>
 
@@ -2019,7 +2019,7 @@ function rcDate(text){
 }
 function readReceipt(text){
   const lines=(text||'').split(/\n+/).map(l=>l.trim()).filter(Boolean);
-  const r={vendor:'',date:'',subtotal:'',total:'',tax:'',payment:''};if(!lines.length)return r;
+  const r={vendor:'',date:'',subtotal:'',total:'',tax:'',tip:'',payment:''};if(!lines.length)return r;
   // vendor: first "name-like" line near the top, or a known web address
   const skip=/[A-Z]\d[A-Z]\s?\d[A-Z]\d|,\s*(on|ont|qc|bc|ab|mb|sk|ns|nb|nl|pe)\b\.?|\bontario\b|@|\bremit|\bdrive\b|\bboulevard|\bblvd|\bhwy|\bhighway|receipt|invoice|welcome|thank|merci|date|time|tel|phone|fax|www|http|address|cashier|store\s*#|^#|order|table|server|copy|copie|questions|drive|street|\bst\b|\bave\b|\brd\b|suite|unit|building|dine[\s-]*in|take[\s-]*out|to[\s-]*go|pick[\s-]*up|delivery|guest|check\s*#|chk|seat|cover|terminal|merchant|transaction|visit\s*us|survey|reprint|duplicate|customer|sale|refund|^\W*$/i;
   const web=(text.match(/\b(?:www\.)?([a-z0-9-]{2,30})\.(?:com|ca|net|org)\b/i)||[])[1];
@@ -2056,8 +2056,10 @@ function readReceipt(text){
     if(pick===null){const strong=uniq.filter(t=>t.strong),use=strong.length?strong:uniq,sum=use.reduce((a,t)=>a+t.v,0);
       const capR=Math.max(.151,REGION.rate/100+.02);if(!total||sum<=total*capR)pick=sum;else{const ok=use.filter(t=>t.v<=total*capR);if(ok.length){const rr=(REGION.rate||13)/100,want=total*rr/(1+rr);pick=ok.reduce((a,t)=>Math.abs(t.v-want)<Math.abs(a-want)?t.v:a,ok[0].v)}}}
     if(pick!==null)r.tax=pick.toFixed(2)}
-  if(r.subtotal&&r.tax){const want=+r.subtotal+ +r.tax;if(Math.abs(want-(+r.total||0))>.03&&allAmts.some(v=>Math.abs(v-want)<=.03))r.total=want.toFixed(2)}
-  if(!r.subtotal&&r.total&&r.tax)r.subtotal=(+r.total- +r.tax).toFixed(2);
+  {let tip=null;for(const l of lines)if(/\b(tip|tips|gratuit(y|é)|pourboire|propina|trinkgeld)\b/i.test(l)&&!/suggest|guide|\d{1,2}\s*%\s*[=:]|tip\s*%/i.test(l)){const a=rcAmounts(l);if(a.length&&a[a.length-1]>0)tip=a[a.length-1]}
+   if(tip!==null&&(!total||tip<total*.6))r.tip=tip.toFixed(2)}
+  if(r.subtotal&&r.tax){const want=+r.subtotal+ +r.tax+(+r.tip||0);if(Math.abs(want-(+r.total||0))>.03&&allAmts.some(v=>Math.abs(v-want)<=.03))r.total=want.toFixed(2)}
+  if(!r.subtotal&&r.total&&r.tax)r.subtotal=(+r.total- +r.tax-(+r.tip||0)).toFixed(2);
   const PAY=[['Visa',/\bv[i1l!|]sa\b/i],['Mastercard',/master\s*c[a@]rd|\bmc\b/i],['Amex',/amex|american express/i],['Debit',/interac|\bdebit\b|débit/i],['Apple Pay',/apple\s*pay/i],['Google Pay',/google\s*pay/i],['Cash',/\bcash\b|comptant/i]];
   for(const[n,re]of PAY)if(re.test(text)){r.payment=n;break}
   if(!r.category)r.category=guessCategory(text);
@@ -2113,7 +2115,7 @@ async function ocrDocText(d,onProg){
   return out.trim();
 }
 function openReceiptDetails(d,isNew){
-  const auto=d.receipt?null:readReceipt(d.text||'');const r=Object.assign({vendor:'',date:'',subtotal:'',total:'',tax:'',payment:'',category:'',note:''},auto||{},d.receipt||{});
+  const auto=d.receipt?null:readReceipt(d.text||'');const r=Object.assign({vendor:'',date:'',subtotal:'',total:'',tax:'',tip:'',payment:'',category:'',note:''},auto||{},d.receipt||{});
   {const mem=vcatGet(r.vendor);if(mem&&!(d.receipt&&d.receipt.category))r.category=mem}
   const noText=!d.text||d.text.length<8;const cats=[...new Set([...CATS,r.category].filter(Boolean))];
   const inp=(id,lab,val,type='text',extra='')=>`<div class="fld"><label>${lab}</label><input type="${type}" id="${id}" value="${esc(val||'')}" ${extra}></div>`;
@@ -2123,6 +2125,7 @@ function openReceiptDetails(d,isNew){
    <button class="btn" id="rcView" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:12px">${icon('image')} View receipt</button>
    ${inp('rcV','Store',r.vendor)}
    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${inp('rcS',`Subtotal (${curSym()})`,r.subtotal,'text','inputmode="decimal"')}<div>${inp('rcD','Date',r.date,'date')}<p class="small" id="rcDw" style="display:none;color:#d97706;margin:-6px 0 8px">Check the year: it looks unusual.</p></div>${inp('rcT',`Total (${curSym()})`,r.total,'text','inputmode="decimal"')}<div>${inp('rcX',`Tax (${curSym()})`,r.tax,'text','inputmode="decimal"')}<button class="link small" id="rcHst" style="display:none;margin:-6px 0 8px;text-align:left"></button></div>
+   ${inp('rcG',`Tip (${curSym()})`,r.tip,'text','inputmode="decimal"')}
    <p class="small" id="rcMath" style="grid-column:1/-1;display:none;margin:-4px 0 6px"></p>
    <div class="fld"><label>Paid with</label><select id="rcP">${['','Visa','Mastercard','Amex','Debit','Cash','Apple Pay','Google Pay','Gift card','Cheque','E-transfer','Other'].map(p=>`<option ${p===r.payment?'selected':''}>${p}</option>`).join('')}</select></div></div>
    <div class="fld"><label>Category</label><select id="rcC"><option value=""></option>${cats.map(c=>`<option ${c===r.category?'selected':''}>${esc(c)}</option>`).join('')}</select></div>
@@ -2130,7 +2133,7 @@ function openReceiptDetails(d,isNew){
    <button class="link small" id="rcTxtB" style="margin:2px 0 6px">See the text Folio read</button><textarea id="rcTxt" readonly rows="8" style="display:none;font-size:12px;margin-bottom:8px"></textarea>
    <div class="btns"><button class="btn l" id="rcRead">${icon('wand')} Read receipt</button><button class="btn" data-x>${isNew?'Skip':'Cancel'}</button><button class="btn pri" id="rcOk">Save details</button></div>`);
   const setF=(id,v,force)=>{const el=$('#'+id);if(el&&v&&(force||!el.value))el.value=v};
-  const fill=(rr,force)=>{setF('rcV',rr.vendor,force);setF('rcD',rr.date,force);setF('rcS',rr.subtotal,force);setF('rcT',rr.total,force);setF('rcX',rr.tax,force);
+  const fill=(rr,force)=>{setF('rcV',rr.vendor,force);setF('rcD',rr.date,force);setF('rcS',rr.subtotal,force);setF('rcT',rr.total,force);setF('rcX',rr.tax,force);setF('rcG',rr.tip,force);
     if(rr.payment&&(force||!$('#rcP').value))$('#rcP').value=rr.payment;const c=vcatGet($('#rcV').value)||rr.category;if(c&&!$('#rcC').value){const s=$('#rcC');if(![...s.options].some(o=>o.value===c))s.add(new Option(c,c));s.value=c}};
   const status=(t,red)=>{const el=$('#rcStatus');if(!el)return;el.style.display=t?'block':'none';el.style.color=red?'var(--danger)':'var(--acc)';el.textContent=t};
   const readNow=async force=>{const btn=$('#rcRead');if(btn)btn.disabled=true;status('Reading the receipt… this takes a few seconds');
@@ -2144,11 +2147,11 @@ function openReceiptDetails(d,isNew){
   $('#rcD').addEventListener('input',dateCheck);dateCheck();
   const hstHint=()=>{const t=parseFloat(($('#rcT').value||'').replace(/[^0-9.]/g,'')),b=$('#rcHst');if(!b)return;if(!t){b.style.display='none';return}
     if(!REGION.rate){b.style.display='none';return}const rr=REGION.rate/100,h=(t*rr/(1+rr)).toFixed(2),x=parseFloat($('#rcX').value||'');b.style.display='block';b.textContent=`${REGION.rate}% ${REGION.tax} included would be ${fmtMoney(h)}${x&&Math.abs(x-h)>.05?' · tap to use':''}`;b.onclick=()=>{$('#rcX').value=h;hstHint()}};
-  const mathCheck=()=>{const n=id=>parseFloat(($('#'+id).value||'').replace(/[^0-9.]/g,'')),sb=n('rcS'),tx=n('rcX'),tt=n('rcT'),m=$('#rcMath');if(!m)return;
-    if(isNaN(sb)||isNaN(tx)){m.style.display='none';return}const want=+(sb+tx).toFixed(2);
-    if(!isNaN(tt)&&Math.abs(want-tt)<=.02){m.style.display='block';m.style.color='var(--acc)';m.textContent=`✓ Subtotal + tax = ${fmtMoney(want)}, matches the total`;m.onclick=null;return}
-    m.style.display='block';m.style.color='#d97706';m.style.cursor='pointer';m.textContent=`Subtotal + tax = ${fmtMoney(want)}${isNaN(tt)?'':`, but the total says ${fmtMoney(tt)}`}${!isNaN(tt)&&tt>want?' (a tip or fee?)':''} · tap to use ${fmtMoney(want)}`;m.onclick=()=>{$('#rcT').value=want.toFixed(2);mathCheck();hstHint()}};
-  ['rcT','rcX','rcS'].forEach(id=>$('#'+id).addEventListener('input',()=>{hstHint();mathCheck()}));hstHint();mathCheck();const _fill=fill;
+  const mathCheck=()=>{const n=id=>parseFloat(($('#'+id).value||'').replace(/[^0-9.]/g,'')),sb=n('rcS'),tx=n('rcX'),tt=n('rcT'),tp=n('rcG'),m=$('#rcMath');if(!m)return;
+    if(isNaN(sb)||isNaN(tx)){m.style.display='none';return}const want=+(sb+tx+(isNaN(tp)?0:tp)).toFixed(2),lab=isNaN(tp)||!tp?'Subtotal + tax':'Subtotal + tax + tip';
+    if(!isNaN(tt)&&Math.abs(want-tt)<=.02){m.style.display='block';m.style.color='var(--acc)';m.textContent=`✓ ${lab} = ${fmtMoney(want)}, matches the total`;m.onclick=null;return}
+    m.style.display='block';m.style.color='#d97706';m.style.cursor='pointer';m.textContent=`${lab} = ${fmtMoney(want)}${isNaN(tt)?'':`, but the total says ${fmtMoney(tt)}`}${!isNaN(tt)&&tt>want?(isNaN(tp)||!tp?' (add the tip?)':' (a fee?)'):''} · tap to use ${fmtMoney(want)}`;m.onclick=()=>{$('#rcT').value=want.toFixed(2);mathCheck();hstHint()}};
+  ['rcT','rcX','rcS','rcG'].forEach(id=>$('#'+id).addEventListener('input',()=>{hstHint();mathCheck()}));hstHint();mathCheck();const _fill=fill;
   $('#rcRead').onclick=()=>readNow(true);
   $('#rcView').onclick=()=>viewReceipt(d);
   $('#rcTxtB').onclick=()=>{const t=$('#rcTxt');const show=t.style.display==='none';t.value=d.text||'(No text yet. Tap Read receipt.)';t.style.display=show?'block':'none';$('#rcTxtB').textContent=show?'Hide the text':'See the text Folio read'};
@@ -2156,7 +2159,7 @@ function openReceiptDetails(d,isNew){
   const num=v=>{const x=parseFloat(String(v).replace(/[^0-9.,-]/g,'').replace(',','.'));return isNaN(x)?'':x.toFixed(2)};
   $('#rcV').onchange=()=>{const c=vcatGet($('#rcV').value);if(c&&!$('#rcC').value){const s=$('#rcC');if(![...s.options].some(o=>o.value===c))s.add(new Option(c,c));s.value=c}};
   $('#rcOk').onclick=async()=>{
-    d.receipt={vendor:$('#rcV').value.trim(),date:$('#rcD').value,subtotal:num($('#rcS').value),total:num($('#rcT').value),tax:num($('#rcX').value),payment:$('#rcP').value,category:$('#rcC').value,note:$('#rcN').value.trim()};
+    d.receipt={vendor:$('#rcV').value.trim(),date:$('#rcD').value,subtotal:num($('#rcS').value),total:num($('#rcT').value),tip:num($('#rcG').value),tax:num($('#rcX').value),payment:$('#rcP').value,category:$('#rcC').value,note:$('#rcN').value.trim()};
     vcatSet(d.receipt.vendor,d.receipt.category);
     try{await libPut(d);closeModal();toast('Receipt details saved');if($('#sheet').classList.contains('on'))renderSheet();else if($('#lib').classList.contains('on'))renderLib()}catch(e){toast('Could not save: '+(e.message||e))}
   };
@@ -2168,10 +2171,10 @@ function exportCSV(listIn){
   if(!list.length){toast('Nothing to export in this view');return}
   const withR=list.filter(d=>d.receipt);if(!withR.length){toast('No receipt details yet. Tap ⋯ → Receipt details on a receipt first.',4500);return}
   list.sort((a,b)=>((a.receipt&&a.receipt.date)||'9999').localeCompare((b.receipt&&b.receipt.date)||'9999')||a.created-b.created);
-  const rows=[['Date','Month','Store','Description','Category','Paid with',`Subtotal (${REGION.cur})`,`Tax (${REGION.cur})`,`Total (${REGION.cur})`,'Folder','Document']];let tt=0,tx=0;const months={};
-  for(const d of list){const r=d.receipt||{};const t=parseFloat(r.total)||0,x=parseFloat(r.tax)||0;tt+=t;tx+=x;const mo=(r.date||'').slice(0,7);if(mo)months[mo]=(months[mo]||0)+t;
-    rows.push([r.date||'',mo,r.vendor||'',r.note||'',r.category||'',r.payment||'',r.subtotal||'',r.tax||'',r.total||'',d.folder,d.name])}
-  rows.push([]);rows.push(['','','','','','TOTAL',(tt-tx).toFixed(2),tx.toFixed(2),tt.toFixed(2)]);
+  const rows=[['Date','Month','Store','Description','Category','Paid with',`Subtotal (${REGION.cur})`,`Tax (${REGION.cur})`,`Tip (${REGION.cur})`,`Total (${REGION.cur})`,'Folder','Document']];let tt=0,tx=0,tg=0;const months={};
+  for(const d of list){const r=d.receipt||{};const t=parseFloat(r.total)||0,x=parseFloat(r.tax)||0;tt+=t;tx+=x;tg+=parseFloat(r.tip)||0;const mo=(r.date||'').slice(0,7);if(mo)months[mo]=(months[mo]||0)+t;
+    rows.push([r.date||'',mo,r.vendor||'',r.note||'',r.category||'',r.payment||'',r.subtotal||'',r.tax||'',r.tip||'',r.total||'',d.folder,d.name])}
+  rows.push([]);rows.push(['','','','','','TOTAL',(tt-tx-tg).toFixed(2),tx.toFixed(2),tg.toFixed(2),tt.toFixed(2)]);
   const mk=Object.keys(months).sort();if(mk.length){rows.push([]);rows.push(['Monthly totals']);rows.push(['Month','Total']);mk.forEach(m=>rows.push([m,months[m].toFixed(2)]))}
   const csv='\ufeff'+rows.map(r=>r.map(csvCell).join(',')).join('\r\n');const t=new Date();
   offerDownload(`${LIB.folder||'Library'} ${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}.csv`,new TextEncoder().encode(csv),'text/csv');
@@ -2182,7 +2185,7 @@ $('#libCsv').onclick=()=>exportCSV();
 /* ---------------- in-app spreadsheet for receipts ---------------- */
 const SH={rows:[],sort:'date',dir:1,month:''};
 const PAYS=['','Visa','Mastercard','Amex','Debit','Cash','Apple Pay','Google Pay','Gift card','Cheque','E-transfer','Other'];
-const SHCOLS=[['date','Date'],['vendor','Store'],['note','Description'],['category','Category'],['payment','Paid with'],['subtotal','Subtotal'],['tax','Tax'],['total','Total']];
+const SHCOLS=[['date','Date'],['vendor','Store'],['note','Description'],['category','Category'],['payment','Paid with'],['subtotal','Subtotal'],['tax','Tax'],['tip','Tip'],['total','Total']];
 const money=v=>fmtMoney(v);
 function openSheet(){
   SH.rows=LIB.docs.filter(d=>!LIB.folder||d.folder===LIB.folder);
@@ -2191,7 +2194,7 @@ function openSheet(){
 }
 function shVisible(){
   let r=SH.rows.filter(d=>!SH.month||((d.receipt||{}).date||'').startsWith(SH.month));
-  const k=SH.sort,num=k==='tax'||k==='total'||k==='subtotal';
+  const k=SH.sort,num=['tax','total','subtotal','tip'].includes(k);
   r.sort((a,b)=>{const x=(a.receipt||{})[k]||'',y=(b.receipt||{})[k]||'';const c=num?(parseFloat(x)||0)-(parseFloat(y)||0):String(x).localeCompare(String(y));return c*SH.dir||a.created-b.created});
   return r;
 }
@@ -2205,29 +2208,29 @@ function renderSheet(){
   if(shIsList()){renderSheetList();return}
   const rows=shVisible(),cats=[...new Set([...CATS,...SH.rows.map(d=>(d.receipt||{}).category).filter(Boolean)])];
   const sel=(f,opts,v)=>`<select data-f="${f}">${opts.map(o=>`<option ${o===v?'selected':''}>${esc(o)}</option>`).join('')}</select>`;
-  $('#shTable').innerHTML=`<table class="xs"><thead><tr><th></th>${SHCOLS.map(([k,l])=>`<th data-k="${k}" class="${k==='tax'||k==='total'||k==='subtotal'?'num':''}">${l}${SH.sort===k?(SH.dir>0?' ▲':' ▼'):''}</th>`).join('')}</tr></thead><tbody>
+  $('#shTable').innerHTML=`<table class="xs"><thead><tr><th></th>${SHCOLS.map(([k,l])=>`<th data-k="${k}" class="${['tax','total','subtotal','tip'].includes(k)?'num':''}">${l}${SH.sort===k?(SH.dir>0?' ▲':' ▼'):''}</th>`).join('')}</tr></thead><tbody>
    ${rows.map(d=>{const r=d.receipt||{};return`<tr data-id="${d.id}"><td><button class="xth" data-open="${d.id}">${d.thumb?`<img src="${d.thumb}" alt="">`:'📄'}</button></td>
      <td><input type="date" data-f="date" value="${esc(r.date||'')}"></td><td><input data-f="vendor" value="${esc(r.vendor||'')}" placeholder="${esc(d.name)}"></td>
      <td><input data-f="note" value="${esc(r.note||'')}" placeholder="What was it for?"></td><td>${sel('category',['',...cats],r.category||'')}</td><td>${sel('payment',PAYS,r.payment||'')}</td>
-     <td class="num"><input data-f="subtotal" inputmode="decimal" value="${esc(r.subtotal||'')}"></td><td class="num"><input data-f="tax" inputmode="decimal" value="${esc(r.tax||'')}"></td><td class="num"><input data-f="total" inputmode="decimal" value="${esc(r.total||'')}"></td></tr>`}).join('')}
-   </tbody><tfoot><tr><td></td><td colspan="6" id="shCount"></td><td class="num" id="shTax"></td><td class="num" id="shTot"></td></tr></tfoot></table>`;
+     <td class="num"><input data-f="subtotal" inputmode="decimal" value="${esc(r.subtotal||'')}"></td><td class="num"><input data-f="tax" inputmode="decimal" value="${esc(r.tax||'')}"></td><td class="num"><input data-f="tip" inputmode="decimal" value="${esc(r.tip||'')}"></td><td class="num"><input data-f="total" inputmode="decimal" value="${esc(r.total||'')}"></td></tr>`}).join('')}
+   </tbody><tfoot><tr><td></td><td colspan="6" id="shCount"></td><td class="num" id="shTax"></td><td class="num" id="shTip"></td><td class="num" id="shTot"></td></tr></tfoot></table>`;
   shTotals();
 }
 function shTotals(){
-  const rows=shVisible();let t=0,x=0;const byM={},byC={};
-  for(const d of rows){const r=d.receipt||{},v=parseFloat(r.total)||0;t+=v;x+=parseFloat(r.tax)||0;const m=(r.date||'').slice(0,7)||'No date';byM[m]=(byM[m]||0)+v;const c=r.category||'Uncategorised';byC[c]=(byC[c]||0)+v}
-  if($('#shCount')){$('#shCount').textContent=`${rows.length} item${rows.length===1?'':'s'} · Total`;$('#shTax').textContent=money(x);$('#shTot').textContent=money(t)}
+  const rows=shVisible();let t=0,x=0,g=0;const byM={},byC={};
+  for(const d of rows){const r=d.receipt||{},v=parseFloat(r.total)||0;t+=v;x+=parseFloat(r.tax)||0;g+=parseFloat(r.tip)||0;const m=(r.date||'').slice(0,7)||'No date';byM[m]=(byM[m]||0)+v;const c=r.category||'Uncategorised';byC[c]=(byC[c]||0)+v}
+  if($('#shCount')){$('#shCount').textContent=`${rows.length} item${rows.length===1?'':'s'} · Total`;$('#shTax').textContent=money(x);$('#shTip').textContent=money(g);$('#shTot').textContent=money(t)}
   $('#shBar').innerHTML=`<div><span>${rows.length} receipt${rows.length===1?'':'s'}</span></div><div><span>Tax</span><b>${money(x)}</b></div><div><span>Total</span><b>${money(t)}</b></div>`;
   const tbl=(title,obj,sortKeys)=>{const ks=sortKeys?Object.keys(obj).sort():Object.keys(obj).sort((a,b)=>obj[b]-obj[a]);return`<div class="xsum"><b>${title}</b>${ks.map(k=>`<div><span>${esc(k)}</span><span>${money(obj[k])}</span></div>`).join('')}</div>`};
   $('#shSummary').innerHTML=rows.length?tbl('By month',byM,true)+tbl('By category',byC,false):'';
 }
 let shSaveT={};
 $('#shTable').addEventListener('input',e=>{const el=e.target.closest('[data-f]');if(!el)return;const tr=el.closest('tr'),d=SH.rows.find(x=>x.id===tr.dataset.id);if(!d)return;
-  d.receipt=Object.assign({vendor:'',date:'',subtotal:'',total:'',tax:'',payment:'',category:'',note:''},d.receipt||{});d.receipt[el.dataset.f]=el.value;
-  if(el.dataset.f==='total'||el.dataset.f==='tax'||el.dataset.f==='date'||el.dataset.f==='category')shTotals();
+  d.receipt=Object.assign({vendor:'',date:'',subtotal:'',total:'',tax:'',tip:'',payment:'',category:'',note:''},d.receipt||{});d.receipt[el.dataset.f]=el.value;
+  if(['total','tax','tip','date','category'].includes(el.dataset.f))shTotals();
   clearTimeout(shSaveT[d.id]);shSaveT[d.id]=setTimeout(()=>libPut(d).catch(()=>toast('Could not save that change')),500)});
 $('#shTable').addEventListener('change',e=>{const el=e.target.closest('[data-f]');if(!el)return;const tr=el.closest('tr'),d=SH.rows.find(x=>x.id===tr.dataset.id);if(!d||!d.receipt)return;
-  if(el.dataset.f==='tax'||el.dataset.f==='total'||el.dataset.f==='subtotal'){const v=parseFloat(String(el.value).replace(/[^0-9.,-]/g,'').replace(',','.'));el.value=d.receipt[el.dataset.f]=isNaN(v)?'':v.toFixed(2);shTotals();libPut(d)}
+  if(['tax','total','subtotal','tip'].includes(el.dataset.f)){const v=parseFloat(String(el.value).replace(/[^0-9.,-]/g,'').replace(',','.'));el.value=d.receipt[el.dataset.f]=isNaN(v)?'':v.toFixed(2);shTotals();libPut(d)}
   if(el.dataset.f==='category')vcatSet(d.receipt.vendor,d.receipt.category);
   if(el.dataset.f==='date'&&!SH.month)renderSheet()});
 $('#shTable').addEventListener('click',e=>{const th=e.target.closest('th[data-k]');if(th){const k=th.dataset.k;SH.dir=SH.sort===k?-SH.dir:1;SH.sort=k;renderSheet();return}
@@ -2251,7 +2254,7 @@ async function fillMissing(){
   for(let i=0;i<todo.length;i++){const d=todo[i];$('#busyMsg').textContent=`Reading receipt ${i+1} of ${todo.length}…`;
     try{let t=d.text;if(!t||t.length<8){t=await ocrDocText(d,pr=>{$('#busyMsg').textContent=`Reading receipt ${i+1} of ${todo.length}… ${Math.round(pr*100)}%`});d.text=t}
       const r=readReceipt(t||'');if(r.total||r.vendor||r.date){d.receipt=Object.assign({vendor:'',date:'',total:'',tax:'',payment:'',category:'',note:''},d.receipt||{});
-        for(const k of['vendor','date','subtotal','total','tax','payment'])if(r[k]&&!d.receipt[k])d.receipt[k]=r[k];if(!d.receipt.category)d.receipt.category=vcatGet(d.receipt.vendor);done++}
+        for(const k of['vendor','date','subtotal','total','tax','tip','payment'])if(r[k]&&!d.receipt[k])d.receipt[k]=r[k];if(!d.receipt.category)d.receipt.category=vcatGet(d.receipt.vendor);done++}
       await libPut(d)}catch(e){console.error(e);if(i===0&&/load/i.test(e.message||'')){unbusy();toast("The receipt reader couldn't load. Check your internet connection.",4500);return}}}
   unbusy();renderSheet();toast(done?`Filled in ${done} of ${todo.length}. Tap each one to check.`:'Couldn’t read those receipts. Tap each one to fill it in.',4500);
 }
