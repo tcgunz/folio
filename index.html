@@ -91,8 +91,10 @@ body.norc .rcx{display:none!important}
 .th .acts button:hover:not(:disabled){background:#eef0f2}
 .th .acts svg{width:17px;height:17px}
 .fld{margin-bottom:12px}
+.btn{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.fld input[type=date]{min-height:40px;background:var(--card,#fff);color:inherit;-webkit-appearance:none;appearance:none}
 .fld label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px;word-break:break-all}
-.fld input[type=text],.fld select{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;font:inherit}
+.fld input[type=text],.fld input[type=date],.fld select{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;font:inherit}
 .fld.cb label{display:flex;gap:8px;align-items:center;color:var(--ink);font-size:13px}
 #modalWrap{position:fixed;inset:0;background:rgba(15,17,21,.45);z-index:70;display:none;align-items:center;justify-content:center;padding:16px}
 #modalWrap.on{display:flex}
@@ -336,7 +338,7 @@ body[data-theme=rose]{--acc:#be185d;--accd:#9d174d;--acc2:#fce7f3;--bg:#faf4f7;-
     <button data-m="rctoggle" id="mRc"><span class="ic" data-i="grid"></span><span id="mRcL">Hide Receipts &amp; expenses</span></button>
     <hr>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 55</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 56</div>
   </div>
 </div>
 
@@ -2311,7 +2313,7 @@ function openReceiptDetails(d,isNew){
   openModal(`<h3>${isNew?'Check the receipt details':'Receipt details'}</h3>
    ${isNew&&!noText?'<p class="small" style="margin-top:-6px">Folio read these from the receipt. Fix anything that looks wrong.</p>':''}
    <p class="small" id="rcStatus" style="margin-top:-6px;display:none"></p>
-   <button class="btn" id="rcView" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:12px">${icon('image')} View receipt</button>
+   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px"><button class="btn" id="rcView" style="display:flex;align-items:center;justify-content:center;gap:6px">${icon('image')} View receipt</button><button class="btn" id="rcRead" style="display:flex;align-items:center;justify-content:center;gap:6px">${icon('wand')} Read receipt</button></div>
    ${inp('rcV','Store',r.vendor)}
    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${inp('rcS',`Subtotal (${curSym()})`,r.subtotal,'text','inputmode="decimal"')}<div>${inp('rcD','Date',r.date,'date')}<p class="small" id="rcDw" style="display:none;color:#d97706;margin:-6px 0 8px">Check the year: it looks unusual.</p></div>${inp('rcT',`Total (${curSym()})`,r.total,'text','inputmode="decimal"')}<div>${inp('rcX',`Tax (${curSym()})`,r.tax,'text','inputmode="decimal"')}<button class="link small" id="rcHst" style="display:none;margin:-6px 0 8px;text-align:left"></button></div>
    ${inp('rcG',`Tip (${curSym()})`,r.tip,'text','inputmode="decimal"')}
@@ -2320,7 +2322,7 @@ function openReceiptDetails(d,isNew){
    <div class="fld"><label>Category</label><select id="rcC"><option value=""></option>${cats.map(c=>`<option ${c===r.category?'selected':''}>${esc(c)}</option>`).join('')}</select></div>
    ${inp('rcN','Description (what it was for)',r.note)}
    <button class="link small" id="rcTxtB" style="margin:2px 0 6px">See the text Folio read</button><textarea id="rcTxt" readonly rows="8" style="display:none;font-size:12px;margin-bottom:8px"></textarea>
-   <div class="btns"><button class="btn l" id="rcRead">${icon('wand')} Read receipt</button><button class="btn" data-x>${isNew?'Skip':'Cancel'}</button><button class="btn pri" id="rcOk">Save details</button></div>`);
+   <div class="btns"><button class="btn" data-x>${isNew?'Skip':'Cancel'}</button><button class="btn pri" id="rcOk">Save details</button></div>`);
   const setF=(id,v,force)=>{const el=$('#'+id);if(el&&v&&(force||!el.value))el.value=v};
   const fill=(rr,force)=>{setF('rcV',rr.vendor,force);setF('rcD',rr.date,force);setF('rcS',rr.subtotal,force);setF('rcT',rr.total,force);setF('rcX',rr.tax,force);setF('rcG',rr.tip,force);
     if(rr.payment&&(force||!$('#rcP').value))$('#rcP').value=rr.payment;const c=vcatGet($('#rcV').value)||rr.category;if(c&&!$('#rcC').value){const s=$('#rcC');if(![...s.options].some(o=>o.value===c))s.add(new Option(c,c));s.value=c}};
@@ -2333,16 +2335,20 @@ function openReceiptDetails(d,isNew){
     catch(e){console.error(e);if($('#rcOk'))status("The receipt reader couldn't load. Check your internet connection, or fill these in.",true)}
     const b2=$('#rcRead');if(b2)b2.disabled=false};
   const dateCheck=()=>{const v=$('#rcD')&&$('#rcD').value,w=$('#rcDw');if(!w)return;if(!v){w.style.display='none';return}const t=new Date(v+'T12:00'),now=new Date();w.style.display=(t>now||now-t>548*864e5)?'block':'none'};
-  $('#rcD').addEventListener('input',dateCheck);dateCheck();
+  $('#rcD').addEventListener('input',dateCheck);try{dateCheck()}catch(e){}
   const hstHint=()=>{const n=id=>parseFloat((($('#'+id)||{}).value||'').replace(/[^0-9.]/g,'')),b=$('#rcHst');if(!b)return;
     const sb=n('rcS'),tt=n('rcT'),x=n('rcX'),tp=n('rcG')||0;if(!REGION.rate||(isNaN(sb)&&isNaN(tt))){b.style.display='none';return}const rr=REGION.rate/100;
     const onTop=!isNaN(sb)&&(isNaN(tt)||tt<=sb+.01||isNaN(x));let h,txt,apply;
     if(onTop){h=+(sb*rr).toFixed(2);const tot=+(sb+h+tp).toFixed(2);txt=`${REGION.rate}% ${REGION.tax} on the subtotal = ${fmtMoney(h)} (total ${fmtMoney(tot)})`;apply=()=>{$('#rcX').value=h.toFixed(2);$('#rcT').value=tot.toFixed(2)}}
     else{h=+(tt*rr/(1+rr)).toFixed(2);txt=`${REGION.rate}% ${REGION.tax} included in the total would be ${fmtMoney(h)}`;apply=()=>{$('#rcX').value=h.toFixed(2);$('#rcS').value=(tt-h-tp).toFixed(2)}}
     const same=!isNaN(x)&&Math.abs(x-h)<=.05;b.style.display='block';b.textContent=txt+(same?' ✓':' · tap to use');b.onclick=()=>{apply();hstHint();mathCheck()}};
-  ['rcT','rcX','rcS','rcG'].forEach(id=>$('#'+id).addEventListener('input',()=>{hstHint();mathCheck()}));hstHint();mathCheck();const _fill=fill;
+  const mathCheck=()=>{const n=id=>parseFloat(($('#'+id).value||'').replace(/[^0-9.]/g,'')),sb=n('rcS'),tx=n('rcX'),tt=n('rcT'),tp=n('rcG'),m=$('#rcMath');if(!m)return;
+    if(isNaN(sb)||isNaN(tx)){m.style.display='none';return}const want=+(sb+tx+(isNaN(tp)?0:tp)).toFixed(2),lab=isNaN(tp)||!tp?'Subtotal + tax':'Subtotal + tax + tip';
+    if(!isNaN(tt)&&Math.abs(want-tt)<=.02){m.style.display='block';m.style.color='var(--acc)';m.textContent=`✓ ${lab} = ${fmtMoney(want)}, matches the total`;m.onclick=null;return}
+    m.style.display='block';m.style.color='#d97706';m.style.cursor='pointer';m.textContent=`${lab} = ${fmtMoney(want)}${isNaN(tt)?'':`, but the total says ${fmtMoney(tt)}`}${!isNaN(tt)&&tt>want?(isNaN(tp)||!tp?' (add the tip?)':' (a fee?)'):''} · tap to use ${fmtMoney(want)}`;m.onclick=()=>{$('#rcT').value=want.toFixed(2);mathCheck();hstHint()}};
   $('#rcRead').onclick=()=>readNow(true);
   $('#rcView').onclick=()=>viewReceipt(d);
+  try{['rcT','rcX','rcS','rcG'].forEach(id=>$('#'+id).addEventListener('input',()=>{hstHint();mathCheck()}));hstHint();mathCheck()}catch(e){console.error(e)}
   $('#rcTxtB').onclick=()=>{const t=$('#rcTxt');const show=t.style.display==='none';t.value=d.text||'(No text yet. Tap Read receipt.)';t.style.display=show?'block':'none';$('#rcTxtB').textContent=show?'Hide the text':'See the text Folio read'};
   if(noText)readNow(false);
   const num=v=>{const x=parseFloat(String(v).replace(/[^0-9.,-]/g,'').replace(',','.'));return isNaN(x)?'':x.toFixed(2)};
