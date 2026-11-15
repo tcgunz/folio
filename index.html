@@ -268,7 +268,7 @@ table.xs tfoot td{font-weight:700;padding:10px 8px;background:#f9fafb}
     <button data-m="rctoggle" id="mRc"><span class="ic" data-i="grid"></span><span id="mRcL">Hide Receipts &amp; expenses</span></button>
     <hr>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 40</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 41</div>
   </div>
 </div>
 
@@ -940,6 +940,7 @@ function openSign(){
 
 /* ---------------- image insert ---------------- */
 function loadImg(file){return new Promise((res,rej)=>{const u=URL.createObjectURL(file);const im=new Image();im.onload=()=>res(im);im.onerror=()=>rej(new Error('img'));im.src=u})}
+function downscaleArea(im,mp){const W=im.naturalWidth||im.width,H=im.naturalHeight||im.height,s=Math.min(1,Math.sqrt(mp*1e6/(W*H)));const c=document.createElement('canvas');c.width=Math.max(1,Math.round(W*s));c.height=Math.max(1,Math.round(H*s));c.getContext('2d').drawImage(im,0,0,c.width,c.height);return c}
 function downscale(im,max){const s=Math.min(1,max/Math.max(im.naturalWidth||im.width,im.naturalHeight||im.height));const c=document.createElement('canvas');c.width=Math.max(1,Math.round((im.naturalWidth||im.width)*s));c.height=Math.max(1,Math.round((im.naturalHeight||im.height)*s));c.getContext('2d').drawImage(im,0,0,c.width,c.height);return c}
 $('#fImg').onchange=async ev=>{const f=(ev.files||ev.target.files)[0];if(!f)return;if(!S.pages.length){toast('Open a PDF first');return}
   try{const im=await loadImg(f);const c=downscale(im,2000);const png=/png|gif|svg/.test(f.type);const url=png?c.toDataURL('image/png'):c.toDataURL('image/jpeg',.9);startPlace(url,png?'png':'jpg',200,c.height/c.width)}catch(e){toast('Could not read that image')}};
@@ -1719,7 +1720,7 @@ function openScanSave(mode){
    <label class="row" style="gap:10px;align-items:flex-start;margin-top:16px"><input type="checkbox" id="ssOcr" ${ocr?'checked':''} style="margin-top:3px;width:18px;height:18px;accent-color:var(--acc)"><span><b>Make text readable &amp; editable</b><br><span class="small">Recognises the words so you can search, copy, select and edit them. Needs internet and takes a few seconds per page.</span></span></label>
    <div class="btns"><button class="btn" data-x>Cancel</button><button class="btn pri" id="ssGo">${mode==='edit'?'Open':'Save PDF'}</button></div>`);
   folderPickerWire();
-  let qual=lsGet('folio.q')||'std';const QD={small:'Fast to send, good for receipts and email · about 150 DPI',std:'Sharp on screen and in print · about 230 DPI',high:'Full detail for fine print · larger files'};
+  let qual=lsGet('folio.q')||'std';const QD={small:'Fast to send · about 150 DPI on a letter page (more on receipts)',std:'Sharp and readable · about 230 DPI on a letter page, small print on receipts stays clear',high:'Full camera detail for the finest print · largest files'};
   const tq=()=>{m.querySelectorAll('#ssQ button').forEach(b=>{const on=b.dataset.q===qual;b.style.background=on?'var(--acc)':'#fff';b.style.color=on?'#fff':'';b.style.borderColor=on?'var(--acc)':''});$('#ssQL').textContent=QD[qual]};tq();
   m.querySelectorAll('#ssQ button').forEach(b=>b.onclick=()=>{qual=b.dataset.q;lsSet('folio.q',qual);tq()});
   const tg=()=>m.querySelectorAll('#ssLook button').forEach(b=>{const on=b.dataset.l===look;b.style.background=on?'var(--acc)':'#fff';b.style.color=on?'#fff':'';b.style.borderColor=on?'var(--acc)':''});tg();
@@ -1754,8 +1755,8 @@ async function buildScanPdf(look,ocr,qual){
   if(ocr){busy('Loading the text reader…');try{worker=await ocrWorker(pr=>{$('#busyMsg').textContent=`Reading text on page ${cur} of ${n}… ${Math.round(pr*100)}%`})}catch(e){toast("The text reader couldn't load, so the PDF was saved without editable text.",5000)}}
   let cur=0;
   if(worker){words=[];try{for(let i=0;i<n;i++){cur=i+1;$('#busyMsg').textContent=`Reading text on page ${cur} of ${n}…`;const im=await imgFrom(outs[i]);const c=downscale(im,2600);words.push(await ocrCanvas(worker,c))}}catch(e){console.error(e);words=null;toast('Text recognition failed. Saved without editable text.',4500)}try{await worker.terminate()}catch(e){}}
-  const QS={small:[1700,.72],std:[2550,.8],high:[0,.9]}[qual||'std']||[2550,.8];
-  if(QS[0]){for(let i=0;i<n;i++){busy(`Optimising page ${i+1} of ${n}…`);await tick();const im=await imgFrom(outs[i]);const c=downscale(im,QS[0]);outs[i]=c.toDataURL('image/jpeg',QS[1])}}
+  const QS={small:[2.2,.75],std:[5,.82],high:[0,.9]}[qual||'std']||[5,.82];   // megapixels, JPEG quality
+  if(QS[0]){for(let i=0;i<n;i++){busy(`Optimising page ${i+1} of ${n}…`);await tick();const im=await imgFrom(outs[i]);const c=downscaleArea(im,QS[0]);outs[i]=c.toDataURL('image/jpeg',QS[1])}}
   busy('Building PDF…');await tick();
   const d=await PDFLib.PDFDocument.create();const font=words?await d.embedFont(PDFLib.StandardFonts.Helvetica):null;
   for(let i=0;i<n;i++){const im=await d.embedJpg(dataBytes(outs[i]));const W=im.width>im.height?792:612,H=W*im.height/im.width;const pg=d.addPage([W,H]);pg.drawImage(im,{x:0,y:0,width:W,height:H});
@@ -1916,11 +1917,11 @@ async function libShare(d){
 }
 /* ---------------- reduce file size of saved PDFs ---------------- */
 async function shrinkPdf(bytes,qual,onPage){
-  const[maxSide,q]=qual==='small'?[1700,.72]:[2550,.8],L=PDFLib;
+  const[mp,q]=qual==='small'?[2.2,.75]:[5,.82],L=PDFLib;
   const pdf=await pdfjsLib.getDocument({data:bytes.slice(),isEvalSupported:false}).promise;
   const out=await L.PDFDocument.create(),font=await out.embedFont(L.StandardFonts.Helvetica);
   try{for(let i=1;i<=pdf.numPages;i++){onPage&&onPage(i,pdf.numPages);await tick();
-    const pg=await pdf.getPage(i),v=pg.view,W=v[2]-v[0],H=v[3]-v[1],sc=Math.min(4,maxSide/Math.max(W,H)),vp=pg.getViewport({scale:sc,rotation:0});
+    const pg=await pdf.getPage(i),v=pg.view,W=v[2]-v[0],H=v[3]-v[1],sc=Math.min(4,Math.sqrt(mp*1e6/(W*H))),vp=pg.getViewport({scale:sc,rotation:0});
     const c=document.createElement('canvas');c.width=Math.round(vp.width);c.height=Math.round(vp.height);const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);
     await pg.render({canvasContext:x,viewport:vp}).promise;
     const img=await out.embedJpg(dataBytes(c.toDataURL('image/jpeg',q)));c.width=c.height=1;
@@ -1938,8 +1939,8 @@ const fmtSize=b=>b>=1048576?(b/1048576).toFixed(1)+' MB':Math.max(1,Math.round(b
 function askShrink(docs,done){
   const total=docs.reduce((a,d)=>a+(d.size||0),0);
   openModal(`<h3>Reduce file size</h3><p class="small" style="margin-top:-6px">${docs.length>1?`${docs.length} documents · `:''}${fmtSize(total)} now. Each page is re-saved as a picture at the size you choose. The words stay searchable and editable.</p>
-   <button class="big" id="shS" style="display:flex;gap:12px;align-items:center;width:100%;padding:14px;border:1px solid var(--line);border-radius:12px;background:#fff;text-align:left;margin-bottom:10px"><span><b>Small</b> · best for email<br><small style="color:var(--muted)">About 150 DPI, roughly 150–300 KB per page</small></span></button>
-   <button class="big" id="shM" style="display:flex;gap:12px;align-items:center;width:100%;padding:14px;border:1px solid var(--line);border-radius:12px;background:#fff;text-align:left"><span><b>Standard</b><br><small style="color:var(--muted)">About 230 DPI, roughly 400–700 KB per page</small></span></button>
+   <button class="big" id="shS" style="display:flex;gap:12px;align-items:center;width:100%;padding:14px;border:1px solid var(--line);border-radius:12px;background:#fff;text-align:left;margin-bottom:10px"><span><b>Small</b> · best for email<br><small style="color:var(--muted)">About 150 DPI on a page, roughly 200–400 KB each</small></span></button>
+   <button class="big" id="shM" style="display:flex;gap:12px;align-items:center;width:100%;padding:14px;border:1px solid var(--line);border-radius:12px;background:#fff;text-align:left"><span><b>Standard</b><br><small style="color:var(--muted)">About 230 DPI on a page, roughly 500–900 KB each</small></span></button>
    <p class="small">Best for scans. PDFs made on a computer (with real text) are usually small already, and Folio keeps the original if shrinking doesn't help.</p>
    <div class="btns"><button class="btn" data-x>Cancel</button></div>`);
   const run=async qual=>{closeModal();let before=0,after=0,changed=0;
