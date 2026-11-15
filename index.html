@@ -308,6 +308,35 @@ body[data-theme=rose]{--acc:#be185d;--accd:#9d174d;--acc2:#fce7f3;--bg:#faf4f7;-
 .sempty .ic{color:var(--sacc)}
 .lvth span{background:var(--sacc)}
 
+/* ===== colourful icons (switch off in Menu > Theme) ===== */
+body.ci{--c-blue:#2563eb;--c-violet:#7c3aed;--c-pink:#db2777;--c-orange:#ea580c;--c-amber:#d97706;--c-green:#16a34a;--c-teal:#0d9488;--c-sky:#0284c7;--c-red:#dc2626;--c-slate:#475569}
+body.ci #tools button:not(.on)[data-t] svg{color:var(--ci)}
+body.ci #tools [data-t=hand]{--ci:var(--c-slate)}body.ci #tools [data-t=select]{--ci:var(--c-blue)}body.ci #tools [data-t=rotpage]{--ci:var(--c-violet)}
+body.ci #tools [data-t=edittext]{--ci:var(--c-orange)}body.ci #tools [data-t=text]{--ci:var(--c-amber)}body.ci #tools [data-t=image]{--ci:var(--c-pink)}body.ci #tools [data-t=sign]{--ci:var(--c-violet)}
+body.ci #tools [data-t=pen]{--ci:var(--c-blue)}body.ci #tools [data-t=hl]{--ci:#ca8a04}body.ci #tools [data-t=wo]{--ci:var(--c-slate)}
+body.ci #tools [data-t=check]{--ci:var(--c-green)}body.ci #tools [data-t=cross]{--ci:var(--c-red)}
+body.ci #tools [data-t=rect]{--ci:var(--c-sky)}body.ci #tools [data-t=ellipse]{--ci:var(--c-teal)}body.ci #tools [data-t=line]{--ci:var(--c-slate)}body.ci #tools [data-t=arrow]{--ci:var(--c-orange)}body.ci #tools [data-t=wmark]{--ci:var(--c-pink)}
+body.ci #tools button:not(.on)[data-t=hl] svg{filter:drop-shadow(0 0 0 #fde047)}
+/* top bar */
+body.ci #top #bFile svg{color:var(--c-amber)}body.ci #top #bScan svg{color:var(--c-teal)}body.ci #top #bLib svg{color:var(--c-violet)}
+body.ci #top #bUndo:not(:disabled) svg,body.ci #top #bRedo:not(:disabled) svg{color:var(--c-sky)}body.ci #top #bPages:not(:disabled) svg{color:var(--c-pink)}
+/* black bar: bright colours on dark */
+body.ci #selbar [data-a=fit] svg{color:#60a5fa}body.ci #selbar [data-a=fill] svg{color:#a78bfa}body.ci #selbar [data-a=rot] svg{color:#c084fc}
+body.ci #selbar [data-a=edit] svg,body.ci #selbar [data-a=medit] svg{color:#fbbf24}body.ci #selbar [data-a=smaller] svg,body.ci #selbar [data-a=bigger] svg{color:#5eead4}
+body.ci #selbar [data-a=dup] svg{color:#7dd3fc}body.ci #selbar [data-a=del] svg,body.ci #selbar [data-a=mdel] svg{color:#f87171}
+/* home screen tiles */
+body.ci .hero .big[data-m=open] .ic{background:#fef3c7;color:#b45309}
+body.ci .hero .big[data-m=scan] .ic{background:#ccfbf1;color:#0f766e}
+body.ci .hero .big[data-m=blank] .ic{background:#dbeafe;color:#1d4ed8}
+body.ci .hero .big[data-m=libdocs] .ic{background:#ede9fe;color:#6d28d9}
+body.ci .hero .big[data-m=scanrc] .ic{background:#fce7f3;color:#be185d}
+body.ci .hero .big[data-m=rcsheet] .ic{background:#dcfce7;color:#15803d}
+body.ci .hero .big[data-m=rclib] .ic{background:#ffedd5;color:#c2410c}
+/* menu */
+body.ci #menu [data-m=open] .ic,body.ci #menu [data-m=lib] .ic{color:var(--c-amber)}body.ci #menu [data-m=add] .ic{color:var(--c-blue)}body.ci #menu [data-m=blank] .ic{color:var(--c-sky)}
+body.ci #menu [data-m=wm] .ic{color:var(--c-pink)}body.ci #menu [data-m=ocr] .ic{color:var(--c-orange)}body.ci #menu [data-m=alltext] .ic{color:var(--c-teal)}body.ci #menu [data-m=form] .ic{color:var(--c-violet)}
+body.ci #menu [data-m=scan] .ic{color:var(--c-teal)}body.ci #menu [data-m=save] .ic{color:var(--c-green)}body.ci #menu [data-m=lib] .ic{color:var(--c-violet)}body.ci #menu [data-m=theme] .ic{color:var(--c-pink)}
+body.ci #menu [data-m=region] .ic{color:var(--c-sky)}body.ci #menu [data-m=rctoggle] .ic{color:var(--c-green)}body.ci #menu [data-m=close] .ic{color:var(--c-red)}
 </style>
 </head>
 <body>
@@ -338,7 +367,7 @@ body[data-theme=rose]{--acc:#be185d;--accd:#9d174d;--acc2:#fce7f3;--bg:#faf4f7;-
     <button data-m="rctoggle" id="mRc"><span class="ic" data-i="grid"></span><span id="mRcL">Hide Receipts &amp; expenses</span></button>
     <hr>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 58</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 59</div>
   </div>
 </div>
 
@@ -2602,9 +2631,10 @@ const _rt=renderTools;renderTools=function(){_rt();attachPickers()};
 const THEMES=[['indigo','Indigo','#4f46e5'],['ocean','Ocean blue','#0284c7'],['teal','Teal (classic)','#0f766e'],['forest','Forest green','#15803d'],['rose','Rose','#be185d']];
 function applyTheme(t){if(!THEMES.some(x=>x[0]===t))t='indigo';document.body.dataset.theme=t;const mt=document.querySelector('meta[name=theme-color]');if(mt)mt.content=THEMES.find(x=>x[0]===t)[2];redrawAll()}
 function openTheme(){const cur=document.body.dataset.theme;
-  openModal(`<h3>Theme</h3><div style="display:grid;gap:10px">${THEMES.map(([k,l,c])=>`<button class="btn" data-th="${k}" style="display:flex;align-items:center;gap:12px;height:54px;justify-content:flex-start;${k===cur?'box-shadow:0 0 0 2px '+c+';':''}"><span style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,${c},#0006)"></span><b style="flex:1;text-align:left">${l}</b>${k===cur?'✓':''}</button>`).join('')}</div><div class="btns"><button class="btn" data-x>Done</button></div>`);
+  openModal(`<h3>Theme</h3><div style="display:grid;gap:10px">${THEMES.map(([k,l,c])=>`<button class="btn" data-th="${k}" style="display:flex;align-items:center;gap:12px;height:54px;justify-content:flex-start;${k===cur?'box-shadow:0 0 0 2px '+c+';':''}"><span style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,${c},#0006)"></span><b style="flex:1;text-align:left">${l}</b>${k===cur?'✓':''}</button>`).join('')}</div><label class="row" style="gap:10px;margin:14px 2px 0;align-items:center"><input type="checkbox" id="thCi" ${document.body.classList.contains('ci')?'checked':''} style="width:20px;height:20px;accent-color:var(--acc)"><span><b>Colourful icons</b><br><span class="small">Turn off for the plain look</span></span></label><div class="btns"><button class="btn" data-x>Done</button></div>`);
+  $('#thCi').onchange=e=>{lsSet('folio.ci',e.target.checked?'1':'0');document.body.classList.toggle('ci',e.target.checked)};
   document.querySelectorAll('[data-th]').forEach(b=>b.onclick=()=>{lsSet('folio.theme',b.dataset.th);applyTheme(b.dataset.th);closeModal();openTheme()})}
-applyTheme(lsGet('folio.theme')||'indigo');
+applyTheme(lsGet('folio.theme')||'indigo');document.body.classList.toggle('ci',lsGet('folio.ci')!=='0');
 /* ---------------- init ---------------- */
 function applyRcSetting(){const off=lsGet('folio.receipts')==='0';document.body.classList.toggle('norc',off);const l=$('#mRcL');if(l)l.textContent=off?'Show Receipts & expenses':'Hide Receipts & expenses'}
 applyRcSetting();
