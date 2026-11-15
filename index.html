@@ -268,7 +268,7 @@ table.xs tfoot td{font-weight:700;padding:10px 8px;background:#f9fafb}
     <button data-m="rctoggle" id="mRc"><span class="ic" data-i="grid"></span><span id="mRcL">Hide Receipts &amp; expenses</span></button>
     <hr>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 44</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 45</div>
   </div>
 </div>
 
@@ -2080,7 +2080,7 @@ function guessCategory(text){
 
 /* ---- receipt reader: finds store, date, total, tax and payment in recognised text ---- */
 const MONTHS={jan:1,janv:1,feb:2,fev:2,fév:2,mar:3,apr:4,avr:4,may:5,mai:5,jun:6,juin:6,jul:7,juil:7,aug:8,aou:8,aoû:8,sep:9,sept:9,oct:10,nov:11,dec:12,déc:12};
-function rcAmounts(line){const out=[];const re=/(?:^|[^\d.,])\$?\s?(\d{1,3}(?:[,\s]\d{3})+|\d+)[.,](\d{2})(?!\d)/g;let m;while((m=re.exec(line)))out.push(parseFloat(m[1].replace(/[,\s]/g,'')+'.'+m[2]));
+function rcAmounts(line){line=line.replace(/(\d)\s+([.,])\s*(\d{2})(?!\d)/g,'$1$2$3').replace(/(\d)([.,])\s+(\d{2})(?!\d)/g,'$1$2$3');const out=[];const re=/(?:^|[^\d.,])\$?\s?(\d{1,3}(?:[,\s]\d{3})+|\d+)[.,](\d{2})(?!\d)/g;let m;while((m=re.exec(line)))out.push(parseFloat(m[1].replace(/[,\s]/g,'')+'.'+m[2]));
   if(!out.length){const r2=/(?:^|\s)(\d{1,5}) (\d{2})(?=\s*$)/.exec(line);if(r2)out.push(parseFloat(r2[1]+'.'+r2[2]))}return out}
 function rcDate(text){
   const iso=d=>{const[y,m,dd]=d;if(y<2000||y>2100||m<1||m>12||dd<1||dd>31)return null;return`${y}-${String(m).padStart(2,'0')}-${String(dd).padStart(2,'0')}`};
@@ -2109,9 +2109,9 @@ function readReceipt(text){
   r.date=rcDate(lines.join('\n'));
   // total: a TOTAL / AMOUNT DUE line (not subtotal), else the largest amount
   let total=null;
-  for(let i=0;i<lines.length;i++){const l=lines[i];if(/s\s?u\s?b\s*-?\s*tota[l1]|sous[\s-]*total|total\s*(?:savings|discount|items|qty|tax)|before\s*tax|net\s*total|merchandise\s*total|goods\s*total/i.test(l))continue;
-    if(/\b(grand\s*total|total|amount\s*due|balance\s*due|montant|à payer|a payer|total\s*due)\b/i.test(l)){let a=rcAmounts(l);if(!a.length&&lines[i+1])a=rcAmounts(lines[i+1]);if(a.length){const v=a[a.length-1];if(total===null||v>=total)total=v}}}
-  let subA=null;for(const l of lines)if(/s\s?u\s?b\s*-?\s*tota[l1]|sous[\s-]*total|before\s*tax|pre[\s-]*tax|net\s*(amount|total)|merchandise\s*total|goods\s*total|amount\s*before/i.test(l)){const a=rcAmounts(l);if(a.length)subA=a[a.length-1]}
+  for(let i=0;i<lines.length;i++){const l=lines[i];if(/s\s?u\s?b\s*-?\s*(tota[l1]|ttl)|s\s*\/\s*total|sous[\s-]*total|total\s*(?:savings|discount|items|qty|tax|before)|before\s*tax|net\s*total|merchandise|goods\s*total|items?\s*total|amount\s*before/i.test(l))continue;
+    if(/\b(grand\s*total|tota[l1]|amount\s*due|balance\s*due|bal(ance)?\b|montant|à payer|a payer|total\s*due|amount\s*paid|total\s*payable|total\s*amount|ttl|tot\b)/i.test(l)&&!/tax\s*tota|tota[l1]\s*tax|tota[l1]\s*(hst|gst|pst)|tota[l1]\s*taxes/i.test(l)){let a=rcAmounts(l);if(!a.length&&lines[i+1])a=rcAmounts(lines[i+1]);if(a.length){const v=a[a.length-1];if(total===null||v>=total)total=v}}}
+  let subA=null;for(const l of lines)if(/s\s?u\s?b\s*-?\s*(tota[l1]|ttl)|s\s*\/\s*total|sous[\s-]*total|before\s*tax|pre[\s-]*tax|net\s*(amount|total|sales)?\b|merchandise(\s*total)?|goods\s*total|items?\s*total|amount\s*before|total\s*before/i.test(l)&&!/net\s*(wt|weight)/i.test(l)){const a=rcAmounts(l);if(a.length)subA=a[a.length-1]}
   const allAmts=lines.flatMap(rcAmounts).filter(v=>v<100000);
   if(total!==null&&subA!==null&&total<subA)total=null;               // a "total" smaller than the subtotal is a misread
   if(total===null&&subA!==null){const rr=(REGION.rate||13)/100,c=allAmts.filter(v=>v>=subA&&v<=subA*1.2);if(c.length)total=c.reduce((a,b)=>Math.abs(b-subA*(1+rr))<Math.abs(a-subA*(1+rr))?b:a)}
@@ -2119,10 +2119,15 @@ function readReceipt(text){
   if(subA!==null&&subA<=(total||Infinity))r.subtotal=subA.toFixed(2);
   if(total!==null)r.total=total.toFixed(2);
   const taxes=[];let sub=null;
-  for(const l of lines){
-    if(/sub\s*-?\s*total|before\s*tax|pre[\s-]*tax/i.test(l)){const a=rcAmounts(l);if(a.length)sub=a[a.length-1]}
-    if(/\b(hst|gst|pst|qst|tps|tvq|tvh|sales\s*tax|tax|taxes|vat|tva|iva|mwst|ust|btw|moms|taxe)\b/i.test(l)&&!/before|excl|tax\s*total|total\s*tax|no\s*tax|tax\s*exempt|tax\s*id|\breg(istration)?\b|#|%\s*off|savings|sub\s*-?\s*total/i.test(l.replace(/\$/g,''))){
-      const a=rcAmounts(l);if(a.length){const v=a[a.length-1];if(v>0&&(!total||v<total))taxes.push({v,strong:/sales\s*tax|\bhst\b|\bgst\b|\bpst\b|\bqst\b|\btps\b|\btvq\b|\btvh\b|\bvat\b|\btva\b|\biva\b|\bmwst\b/i.test(l)})}}}
+  const TAXW=/\b(h\.?\s?s\.?\s?t\.?|g\.?\s?s\.?\s?t\.?|p\.?\s?s\.?\s?t\.?|qst|tps|tvq|tvh|sales\s*tax|tax\s*\d?|taxes|tx\d?|t\d\b|tax\s*amount|vat|tva|iva|mwst|ust|btw|moms|taxe)\b/i;
+  const TAXSTRONG=/\b(h\.?\s?s\.?\s?t\.?|g\.?\s?s\.?\s?t\.?|p\.?\s?s\.?\s?t\.?|qst|tps|tvq|tvh|sales\s*tax|vat|tva|iva|mwst)\b/i;
+  const TAXSKIP=/before|excl|no\s*tax|non[\s-]*tax|tax\s*exempt|tax\s*id|exempt|%\s*off|savings|s\s?u\s?b\s*-?\s*tota|incl\.?\s*in\s*price/i;
+  for(let li=0;li<lines.length;li++){const l=lines[li];
+    if(/s\s?u\s?b\s*-?\s*(tota[l1]|ttl)|s\s*\/\s*total|sous[\s-]*total|before\s*tax|pre[\s-]*tax/i.test(l)){const a=rcAmounts(l);if(a.length)sub=a[a.length-1]}
+    if(TAXW.test(l)&&!TAXSKIP.test(l)){
+      let a=rcAmounts(l.replace(/#\s*[\w-]+|\b\d{9}\s*RT\s*\d{4}\b|\b(reg|registration)\b[^\d]*[\d\s-]{8,}/gi,' '));
+      if(!a.length&&lines[li+1]&&!TAXW.test(lines[li+1])&&!/tota[l1]/i.test(lines[li+1]))a=rcAmounts(lines[li+1]);
+      if(a.length){const v=a[a.length-1];if(v>0&&(!total||v<total))taxes.push({v,strong:TAXSTRONG.test(l)})}}}
   if(taxes.length){
     const near=(a,b)=>Math.abs(a-b)<=Math.max(.03,b*.01);let pick=null;
     const uniq=[...new Map(taxes.map(t=>[t.v.toFixed(2),t])).values()];
@@ -2138,6 +2143,7 @@ function readReceipt(text){
    if(tip!==null&&(!total||tip<total*.6))r.tip=tip.toFixed(2)}
   if(r.subtotal&&r.tax&&+r.tax>0){const want=+r.subtotal+ +r.tax+(+r.tip||0),t=+r.total||0;
     if(Math.abs(want-t)>.03&&(allAmts.some(v=>Math.abs(v-want)<=.03)||!t||t<=+r.subtotal+.01))r.total=want.toFixed(2)}
+  if(r.subtotal&&r.total&&!r.tax&&Math.abs(+r.subtotal- +r.total)<.01)r.subtotal='';
   if(!r.subtotal&&r.total&&r.tax)r.subtotal=(+r.total- +r.tax-(+r.tip||0)).toFixed(2);
   const PAY=[['Visa',/\bv[i1l!|]sa\b/i],['Mastercard',/master\s*c[a@]rd|\bmc\b/i],['Amex',/amex|american express/i],['Debit',/interac|\bdebit\b|débit/i],['Apple Pay',/apple\s*pay/i],['Google Pay',/google\s*pay/i],['Cash',/\bcash\b|comptant/i]];
   for(const[n,re]of PAY)if(re.test(text)){r.payment=n;break}
@@ -2225,7 +2231,7 @@ function openReceiptDetails(d,isNew){
   const dateCheck=()=>{const v=$('#rcD')&&$('#rcD').value,w=$('#rcDw');if(!w)return;if(!v){w.style.display='none';return}const t=new Date(v+'T12:00'),now=new Date();w.style.display=(t>now||now-t>548*864e5)?'block':'none'};
   $('#rcD').addEventListener('input',dateCheck);dateCheck();
   const hstHint=()=>{const t=parseFloat(($('#rcT').value||'').replace(/[^0-9.]/g,'')),b=$('#rcHst');if(!b)return;if(!t){b.style.display='none';return}
-    if(!REGION.rate){b.style.display='none';return}const rr=REGION.rate/100,h=(t*rr/(1+rr)).toFixed(2),x=parseFloat($('#rcX').value||'');b.style.display='block';b.textContent=`${REGION.rate}% ${REGION.tax} included would be ${fmtMoney(h)}${x&&Math.abs(x-h)>.05?' · tap to use':''}`;b.onclick=()=>{$('#rcX').value=h;hstHint()}};
+    if(!REGION.rate){b.style.display='none';return}const rr=REGION.rate/100,h=(t*rr/(1+rr)).toFixed(2),x=parseFloat($('#rcX').value||'');b.style.display='block';b.textContent=`${REGION.rate}% ${REGION.tax} included would be ${fmtMoney(h)}${isNaN(x)||Math.abs(x-h)>.05?' · tap to use':''}`;b.onclick=()=>{$('#rcX').value=h;const sb=$('#rcS'),tt=parseFloat($('#rcT').value);if(sb&&(!sb.value||Math.abs(parseFloat(sb.value)-tt)<.01))sb.value=(tt-h-(parseFloat(($('#rcG')||{}).value)||0)).toFixed(2);hstHint();mathCheck()};b.onclick=()=>{$('#rcX').value=h;hstHint()}};
   const mathCheck=()=>{const n=id=>parseFloat(($('#'+id).value||'').replace(/[^0-9.]/g,'')),sb=n('rcS'),tx=n('rcX'),tt=n('rcT'),tp=n('rcG'),m=$('#rcMath');if(!m)return;
     if(isNaN(sb)||isNaN(tx)){m.style.display='none';return}const want=+(sb+tx+(isNaN(tp)?0:tp)).toFixed(2),lab=isNaN(tp)||!tp?'Subtotal + tax':'Subtotal + tax + tip';
     if(!isNaN(tt)&&Math.abs(want-tt)<=.02){m.style.display='block';m.style.color='var(--acc)';m.textContent=`✓ ${lab} = ${fmtMoney(want)}, matches the total`;m.onclick=null;return}
