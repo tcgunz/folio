@@ -145,6 +145,25 @@ input.fo{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:point
 .sbtn.pri{background:#14b8a6;color:#04201d}
 .sbtn:disabled{opacity:.35}
 #cropArea{flex:1;position:relative}
+#sheet{position:fixed;inset:0;z-index:47;background:var(--bg);color:var(--ink);display:none;flex-direction:column}
+#sheet.on{display:flex}
+#sheet .sh{background:#fff;border-bottom:1px solid var(--line)}
+#shMonths{padding:10px 12px 0}
+#shMonths button{background:#fff;border:1px solid var(--line);color:var(--ink)}
+#shMonths button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+table.xs{border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;min-width:820px;width:100%;font-size:13px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+table.xs th{background:#f3f5f7;text-align:left;padding:9px 8px;font-weight:600;font-size:12px;color:#374151;cursor:pointer;white-space:nowrap;border-bottom:1px solid var(--line)}
+table.xs td{border-bottom:1px solid #eef0f2;padding:2px 4px}
+table.xs input,table.xs select{width:100%;border:1px solid transparent;background:transparent;padding:8px 6px;font:inherit;font-size:14px;border-radius:6px;color:var(--ink)}
+table.xs input:focus,table.xs select:focus{border-color:var(--acc);background:#fff;outline:none}
+table.xs .num,table.xs .num input{text-align:right}
+table.xs td:nth-child(2){min-width:130px}table.xs td:nth-child(3){min-width:130px}table.xs td:nth-child(4){min-width:170px}table.xs td:nth-child(5){min-width:150px}table.xs td:nth-child(6){min-width:105px}table.xs td:nth-child(7),table.xs td:nth-child(8){min-width:80px}
+table.xs tfoot td{font-weight:700;padding:10px 8px;background:#f9fafb}
+.xth{width:34px;height:44px;border-radius:5px;overflow:hidden;background:#f3f4f6;display:grid;place-items:center}
+.xth img{width:100%;height:100%;object-fit:cover}
+.xsum{background:#fff;border-radius:12px;padding:12px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.xsum b{display:block;margin-bottom:6px}
+.xsum div{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #f1f3f5;font-size:13px}
 #lib{position:fixed;inset:0;z-index:45;background:var(--bg);color:var(--ink);display:none;flex-direction:column}
 #lib.on{display:flex}
 #lib .sh{background:#fff;border-bottom:1px solid var(--line)}
@@ -213,7 +232,7 @@ input.fo{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:point
     <button data-m="lib"><span class="ic" data-i="books"></span>Library</button>
     <hr>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 21</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 22</div>
   </div>
 </div>
 
@@ -256,7 +275,16 @@ input.fo{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:point
   <div class="chips" id="libChips"></div>
   <div id="libFolderTools" style="display:none;gap:14px;padding:6px 14px 0"><button class="link" id="libRenameF">Rename folder</button><button class="link" style="color:var(--danger)" id="libDeleteF">Delete folder</button></div>
   <div id="libGrid" style="flex:1;overflow:auto;padding:12px"></div>
-  <div class="sf" style="border-top:1px solid var(--line);align-items:center"><span class="small" id="libUse" style="flex:1"></span><button class="btn" id="libCsv">Export CSV</button><button class="btn" id="libRestoreB">Restore</button><button class="btn" id="libBackup">Back up</button></div>
+  <div class="sf" style="border-top:1px solid var(--line);align-items:center"><span class="small" id="libUse" style="flex:1"></span><button class="btn pri" id="libSheet">Spreadsheet</button><button class="btn" id="libCsv" style="display:none">Export CSV</button><button class="btn" id="libRestoreB">Restore</button><button class="btn" id="libBackup">Back up</button></div>
+</div>
+<div id="sheet">
+  <div class="sh"><button class="tb" id="shBack"><span class="ic" data-i="back"></span></button><b id="shTitle">Spreadsheet</b><span class="sp"></span><button class="btn" id="shCsv" style="height:36px">Export CSV</button></div>
+  <div class="chips" id="shMonths"></div>
+  <div style="flex:1;overflow:auto;padding:10px 0 20px">
+    <div id="shTable" style="overflow-x:auto;padding:0 10px"></div>
+    <p class="small" style="padding:4px 14px">Tap a cell to edit; changes save automatically. Tap a column name to sort, or the picture to open the receipt.</p>
+    <div id="shSummary" style="padding:0 10px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px"></div>
+  </div>
 </div>
 <div id="scan">
   <div class="sh"><button class="tb" id="scBack"><span class="ic" data-i="back"></span></button><b>Scanner</b><span class="sp"></span><span id="scCount" class="small" style="color:#9ca3af;padding-right:8px"></span></div>
@@ -1896,9 +1924,9 @@ function openReceiptDetails(d,isNew){
   };
 }
 const csvCell=v=>{v=v==null?'':String(v);return/[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
-function exportCSV(){
-  const q=LIB.q.trim().toLowerCase();let list=LIB.docs.filter(d=>!LIB.folder||d.folder===LIB.folder);
-  if(q)list=list.filter(d=>libSearchText(d).includes(q));
+function exportCSV(listIn){
+  const q=LIB.q.trim().toLowerCase();let list=listIn?listIn.slice():LIB.docs.filter(d=>!LIB.folder||d.folder===LIB.folder);
+  if(q&&!listIn)list=list.filter(d=>libSearchText(d).includes(q));
   if(!list.length){toast('Nothing to export in this view');return}
   const withR=list.filter(d=>d.receipt);if(!withR.length){toast('No receipt details yet. Tap ⋯ → Receipt details on a receipt first.',4500);return}
   list.sort((a,b)=>((a.receipt&&a.receipt.date)||'9999').localeCompare((b.receipt&&b.receipt.date)||'9999')||a.created-b.created);
@@ -1912,7 +1940,60 @@ function exportCSV(){
   toast(`Exported ${list.length} row${list.length>1?'s':''} · total $${tt.toFixed(2)}`,4000);
 }
 const libSearchText=d=>(d.name+' '+d.folder+' '+(d.text||'')+' '+(d.receipt?Object.values(d.receipt).join(' '):'')).toLowerCase();
-$('#libCsv').onclick=exportCSV;
+$('#libCsv').onclick=()=>exportCSV();
+/* ---------------- in-app spreadsheet for receipts ---------------- */
+const SH={rows:[],sort:'date',dir:1,month:''};
+const PAYS=['','Visa','Mastercard','Amex','Debit','Cash','Apple Pay','Google Pay','Gift card','Cheque','E-transfer','Other'];
+const SHCOLS=[['date','Date'],['vendor','Store'],['note','Description'],['category','Category'],['payment','Paid with'],['tax','Tax'],['total','Total']];
+const money=v=>'$'+(Number(v)||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+function openSheet(){
+  SH.rows=LIB.docs.filter(d=>!LIB.folder||d.folder===LIB.folder);
+  if(!SH.rows.length){toast('This folder is empty');return}
+  SH.month='';$('#shTitle').textContent=(LIB.folder||'All documents')+' · spreadsheet';$('#sheet').classList.add('on');renderSheet();
+}
+function shVisible(){
+  let r=SH.rows.filter(d=>!SH.month||((d.receipt||{}).date||'').startsWith(SH.month));
+  const k=SH.sort,num=k==='tax'||k==='total';
+  r.sort((a,b)=>{const x=(a.receipt||{})[k]||'',y=(b.receipt||{})[k]||'';const c=num?(parseFloat(x)||0)-(parseFloat(y)||0):String(x).localeCompare(String(y));return c*SH.dir||a.created-b.created});
+  return r;
+}
+function renderSheet(){
+  const months=[...new Set(SH.rows.map(d=>((d.receipt||{}).date||'').slice(0,7)).filter(Boolean))].sort();
+  const mName=m=>{const[y,mo]=m.split('-');return new Date(+y,+mo-1,1).toLocaleDateString(undefined,{month:'short',year:'numeric'})};
+  $('#shMonths').innerHTML=`<button data-m="" class="${SH.month===''?'on':''}">All months</button>`+months.map(m=>`<button data-m="${m}" class="${SH.month===m?'on':''}">${mName(m)}</button>`).join('');
+  const rows=shVisible(),cats=[...new Set([...CATS,...SH.rows.map(d=>(d.receipt||{}).category).filter(Boolean)])];
+  const sel=(f,opts,v)=>`<select data-f="${f}">${opts.map(o=>`<option ${o===v?'selected':''}>${esc(o)}</option>`).join('')}</select>`;
+  $('#shTable').innerHTML=`<table class="xs"><thead><tr><th></th>${SHCOLS.map(([k,l])=>`<th data-k="${k}" class="${k==='tax'||k==='total'?'num':''}">${l}${SH.sort===k?(SH.dir>0?' ▲':' ▼'):''}</th>`).join('')}</tr></thead><tbody>
+   ${rows.map(d=>{const r=d.receipt||{};return`<tr data-id="${d.id}"><td><button class="xth" data-open="${d.id}">${d.thumb?`<img src="${d.thumb}" alt="">`:'📄'}</button></td>
+     <td><input type="date" data-f="date" value="${esc(r.date||'')}"></td><td><input data-f="vendor" value="${esc(r.vendor||'')}" placeholder="${esc(d.name)}"></td>
+     <td><input data-f="note" value="${esc(r.note||'')}" placeholder="What was it for?"></td><td>${sel('category',['',...cats],r.category||'')}</td><td>${sel('payment',PAYS,r.payment||'')}</td>
+     <td class="num"><input data-f="tax" inputmode="decimal" value="${esc(r.tax||'')}"></td><td class="num"><input data-f="total" inputmode="decimal" value="${esc(r.total||'')}"></td></tr>`}).join('')}
+   </tbody><tfoot><tr><td></td><td colspan="5" id="shCount"></td><td class="num" id="shTax"></td><td class="num" id="shTot"></td></tr></tfoot></table>`;
+  shTotals();
+}
+function shTotals(){
+  const rows=shVisible();let t=0,x=0;const byM={},byC={};
+  for(const d of rows){const r=d.receipt||{},v=parseFloat(r.total)||0;t+=v;x+=parseFloat(r.tax)||0;const m=(r.date||'').slice(0,7)||'No date';byM[m]=(byM[m]||0)+v;const c=r.category||'Uncategorised';byC[c]=(byC[c]||0)+v}
+  $('#shCount').textContent=`${rows.length} item${rows.length===1?'':'s'} · Total`;$('#shTax').textContent=money(x);$('#shTot').textContent=money(t);
+  const tbl=(title,obj,sortKeys)=>{const ks=sortKeys?Object.keys(obj).sort():Object.keys(obj).sort((a,b)=>obj[b]-obj[a]);return`<div class="xsum"><b>${title}</b>${ks.map(k=>`<div><span>${esc(k)}</span><span>${money(obj[k])}</span></div>`).join('')}</div>`};
+  $('#shSummary').innerHTML=rows.length?tbl('By month',byM,true)+tbl('By category',byC,false):'';
+}
+let shSaveT={};
+$('#shTable').addEventListener('input',e=>{const el=e.target.closest('[data-f]');if(!el)return;const tr=el.closest('tr'),d=SH.rows.find(x=>x.id===tr.dataset.id);if(!d)return;
+  d.receipt=Object.assign({vendor:'',date:'',total:'',tax:'',payment:'',category:'',note:''},d.receipt||{});d.receipt[el.dataset.f]=el.value;
+  if(el.dataset.f==='total'||el.dataset.f==='tax'||el.dataset.f==='date'||el.dataset.f==='category')shTotals();
+  clearTimeout(shSaveT[d.id]);shSaveT[d.id]=setTimeout(()=>libPut(d).catch(()=>toast('Could not save that change')),500)});
+$('#shTable').addEventListener('change',e=>{const el=e.target.closest('[data-f]');if(!el)return;const tr=el.closest('tr'),d=SH.rows.find(x=>x.id===tr.dataset.id);if(!d||!d.receipt)return;
+  if(el.dataset.f==='tax'||el.dataset.f==='total'){const v=parseFloat(String(el.value).replace(/[^0-9.,-]/g,'').replace(',','.'));el.value=d.receipt[el.dataset.f]=isNaN(v)?'':v.toFixed(2);shTotals();libPut(d)}
+  if(el.dataset.f==='category')vcatSet(d.receipt.vendor,d.receipt.category);
+  if(el.dataset.f==='date'&&!SH.month)renderSheet()});
+$('#shTable').addEventListener('click',e=>{const th=e.target.closest('th[data-k]');if(th){const k=th.dataset.k;SH.dir=SH.sort===k?-SH.dir:1;SH.sort=k;renderSheet();return}
+  const o=e.target.closest('[data-open]');if(o){const d=SH.rows.find(x=>x.id===o.dataset.open);if(d){$('#sheet').classList.remove('on');libOpenDoc(d)}}});
+$('#shMonths').addEventListener('click',e=>{const b=e.target.closest('[data-m]');if(!b)return;SH.month=b.dataset.m;renderSheet()});
+$('#shBack').onclick=()=>{$('#sheet').classList.remove('on');renderLib()};
+$('#shCsv').onclick=()=>exportCSV(shVisible());
+$('#libSheet').onclick=openSheet;
+
 
 /* ---------------- file pickers: real inputs laid over the buttons, so a direct tap opens them ---------------- */
 function overlayInput(el,srcId){
@@ -2015,6 +2096,7 @@ function leaveDoc(){
 }
 navWatch($('#menu'),()=>$('#menu').classList.remove('on'));
 document.querySelectorAll('.drawer').forEach(d=>navWatch(d,()=>d.classList.remove('on')));
+navWatch($('#sheet'),()=>{$('#sheet').classList.remove('on');renderLib()});
 navWatch($('#lib'),()=>$('#lib').classList.remove('on'));
 navWatch($('#scan'),()=>$('#scan').classList.remove('on'));
 navWatch($('#crop'),()=>{$('#crop').classList.remove('on')});
