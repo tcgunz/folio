@@ -174,6 +174,8 @@ input.fo{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:point
     <button data-m="add"><span class="ic" data-i="merge"></span>Add PDF (merge)…</button>
     <button data-m="blank"><span class="ic" data-i="filePlus"></span>Insert blank page</button>
     <button data-m="wm"><span class="ic" data-i="wmark"></span>Remove watermarks…</button>
+    <button data-m="ocr"><span class="ic" data-i="text"></span>Recognize text (OCR)</button>
+    <button data-m="alltext"><span class="ic" data-i="copy"></span>Copy all text</button>
     <button data-m="form" id="mForm"><span class="ic" data-i="form"></span>Fill form fields</button>
     <hr>
     <button data-m="scan"><span class="ic" data-i="scan"></span>Scan document</button>
@@ -211,7 +213,7 @@ input.fo{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:point
 
 <div class="drawer" id="dWm"><header>Remove watermarks<span class="sp"></span><button class="tb" data-close><span class="ic" data-i="x"></span></button></header><div class="body" id="wmList"></div></div>
 <div id="live"><video id="lvVid" playsinline muted autoplay></video><canvas id="lvCv"></canvas><div id="lvFlash"></div>
-  <div class="lvTop"><button class="tb" id="lvClose"><span class="ic" data-i="x"></span></button><span id="lvMsg">Starting camera…</span><button class="pill" id="lvAuto">Auto: On</button></div>
+  <div class="lvTop"><button class="tb" id="lvClose"><span class="ic" data-i="x"></span></button><span id="lvMsg">Starting camera…</span><button class="pill" id="lvHold">Hold 2.5s</button><button class="pill" id="lvAuto">Auto: On</button></div>
   <div class="lvBot"><button id="lvThumb" class="lvth"><img id="lvImg" alt=""><span id="lvN"></span></button><button id="lvShut" class="shutter" aria-label="Capture"></button><button class="pill" id="lvDone">Done</button></div>
 </div>
 <div id="scan">
@@ -447,10 +449,10 @@ $('#modalWrap').addEventListener('pointerdown',e=>{if(e.target.id==='modalWrap')
 function hexRgb(h){h=h.replace('#','');return [parseInt(h.slice(0,2),16)/255,parseInt(h.slice(2,4),16)/255,parseInt(h.slice(4,6),16)/255]}
 function dataBytes(u){const b=atob(u.split(',')[1]);const a=new Uint8Array(b.length);for(let i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a}
 const dlP=(async()=>{try{return (window.claude&&window.claude.use)?await window.claude.use('downloads'):null}catch(e){return null}})();
-async function offerDownload(filename,bytes){
+async function offerDownload(filename,bytes,type='application/pdf'){
   const dl=await dlP;
-  if(!dl){try{const u=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));const l=document.createElement('a');l.href=u;l.download=filename;document.body.appendChild(l);l.click();l.remove();setTimeout(()=>URL.revokeObjectURL(u),60000);toast('Saved '+filename);return true}catch(e){toast("Saving isn't available here",4500);return false}}
-  try{await dl.save({filename,data:new Blob([bytes],{type:'application/pdf'})});toast('Saved '+filename);return true}
+  if(!dl){try{const u=URL.createObjectURL(new Blob([bytes],{type}));const l=document.createElement('a');l.href=u;l.download=filename;document.body.appendChild(l);l.click();l.remove();setTimeout(()=>URL.revokeObjectURL(u),60000);toast('Saved '+filename);return true}catch(e){toast("Saving isn't available here",4500);return false}}
+  try{await dl.save({filename,data:new Blob([bytes],{type})});toast('Saved '+filename);return true}
   catch(err){const c=err&&err.code;toast(c==='declined'?'Save cancelled':c==='rate_limited'?'One moment, then try again':'Could not save ('+(c||'error')+')');return false}
 }
 
@@ -914,6 +916,8 @@ function menuAct(m){
   if(m==='blank')insertBlank();
   if(m==='form')openForm();
   if(m==='wm')openWm();
+  if(m==='ocr')ocrDocument();
+  if(m==='alltext')showAllText();
   if(m==='scan')openScanner();
   if(m==='save')openSave();
   if(m==='close'){resetDoc();relayout(false);closeDrawers()}
@@ -967,7 +971,7 @@ $('#scanBody').addEventListener('click',ev=>{
 });
 async function addScans(files,thenCrop){
   if(!files.length)return;busy('Finding page edges…');await tick();let added=0;
-  for(const f of files){try{const im=await loadImg(f);const c=downscale(im,2400);const p={id:uid++,c,q:detectQuad(c),rot:0,filter:'auto'};await processScan(p);SC.pages.push(p);added++}catch(e){console.error(e);toast("Couldn't read one of those images")}}
+  for(const f of files){try{const im=await loadImg(f);const p=await makeScanPage(im);p.q=detectQuad(p.c);await processScan(p);SC.pages.push(p);added++}catch(e){console.error(e);toast("Couldn't read one of those images")}}
   unbusy();renderScan();if(thenCrop&&added)openCrop(SC.pages.length-1);else if(added)toast('Cropped and cleaned automatically. Tap a page to fine-tune it.');
 }
 /* --- edge detection --- */
@@ -1008,7 +1012,7 @@ function homography(from,to){
 }
 function warp(c,q){
   const D=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]);let W=Math.max(D(q[0],q[1]),D(q[3],q[2])),H=Math.max(D(q[0],q[3]),D(q[1],q[2]));
-  const cap=2200/Math.max(W,H);if(cap<1){W*=cap;H*=cap}W=Math.max(8,Math.round(W));H=Math.max(8,Math.round(H));
+  const cap=3400/Math.max(W,H);if(cap<1){W*=cap;H*=cap}W=Math.max(8,Math.round(W));H=Math.max(8,Math.round(H));
   const h=homography([[0,0],[W,0],[W,H],[0,H]],q);const sw=c.width,sh=c.height,sd=c.getContext('2d').getImageData(0,0,sw,sh).data;
   const out=new ImageData(W,H),od=out.data,mx=sw-1.001,my=sh-1.001,row=sw*4;
   for(let y=0;y<H;y++){const v=y+.5;for(let x=0;x<W;x++){const u=x+.5,den=h[6]*u+h[7]*v+1;let sx=(h[0]*u+h[1]*v+h[2])/den-.5,sy=(h[3]*u+h[4]*v+h[5])/den-.5;
@@ -1032,11 +1036,13 @@ function applyFilter(img,mode){
       if(mode==='auto'){const l=L[i]*f;for(let k=0;k<3;k++){let v=d[j+k]*f;v=l+(v-l)*1.25;v=(v-22)*1.1;d[j+k]=v}}
       else{let v=L[i]*f;if(mode==='gray')v=(v-22)*1.1;else v=v<150?0:v>205?255:(v-150)*4.6;d[j]=d[j+1]=d[j+2]=v}}}
 }
-async function processScan(p){
-  await tick();const im=warp(p.c,p.q);applyFilter(im,p.filter);
+async function makeScanPage(src){const full=downscale(src,4000);const blob=await new Promise(r=>full.toBlob(r,'image/jpeg',.94));return{id:uid++,blob,c:downscale(full,1600),rot:0,filter:'auto'}}
+async function fullCanvas(p){if(!p.blob)return p.c;const bmp=await createImageBitmap(p.blob);const c=document.createElement('canvas');c.width=bmp.width;c.height=bmp.height;c.getContext('2d').drawImage(bmp,0,0);try{bmp.close()}catch(e){}return c}
+async function processScan(p,look){
+  await tick();const full=await fullCanvas(p),k=full.width/p.c.width;const im=warp(full,p.q.map(([x,y])=>[x*k,y*k]));applyFilter(im,look||p.filter);
   let c=document.createElement('canvas');c.width=im.width;c.height=im.height;c.getContext('2d').putImageData(im,0,0);
   if(p.rot){const r=document.createElement('canvas'),q=p.rot%180;r.width=q?c.height:c.width;r.height=q?c.width:c.height;const x=r.getContext('2d');x.translate(r.width/2,r.height/2);x.rotate(p.rot*Math.PI/180);x.drawImage(c,-c.width/2,-c.height/2);c=r}
-  p.out=c.toDataURL('image/jpeg',.86);p.ow=c.width;p.oh=c.height;
+  const url=c.toDataURL('image/jpeg',.9);if(look)return url;p.out=url;p.ow=c.width;p.oh=c.height;
 }
 async function scansToPdf(){
   const d=await PDFLib.PDFDocument.create();
@@ -1044,9 +1050,8 @@ async function scansToPdf(){
   return d.save();
 }
 const scanName=()=>{const t=new Date();return`Scan ${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}.pdf`};
-$('#scSave').onclick=async()=>{if(!SC.pages.length)return;busy('Building PDF…');await tick();try{const b=await scansToPdf();unbusy();offerDownload(scanName(),b)}catch(e){unbusy();console.error(e);toast('Could not build the PDF')}};
-$('#scEdit').onclick=async()=>{if(!SC.pages.length)return;busy('Opening in editor…');await tick();
-  try{const b=await scansToPdf();const append=S.pages.length>0;await addBytesAsDoc(b,scanName(),append);SC.pages=[];renderScan();$('#scan').classList.remove('on');toast(append?'Scanned pages added to your document':'Scan opened in the editor')}catch(e){console.error(e);toast('Could not open the scan')}unbusy()};
+$('#scSave').onclick=()=>openScanSave('save');
+$('#scEdit').onclick=()=>openScanSave('edit');
 
 /* --- crop editor --- */
 let CR={s:1,ox:0,oy:0};
@@ -1290,11 +1295,12 @@ async function reloadSource(src,bytes){
 }
 
 /* ---------------- live auto-scan ---------------- */
-const LV={stream:null,timer:null,prev:null,q:null,stable:0,armed:true,auto:true,busy:false,ref:null};
+const LV={stream:null,timer:null,prev:null,q:null,stable:0,armed:true,auto:true,busy:false,ref:null,hold:+(lsGet('folio.hold')||2.5),capAt:0};
+const HOLDS=[1.5,2.5,4];const needFrames=()=>Math.round(LV.hold/.17);
 const lvSmall=document.createElement('canvas');
 async function openLive(){
   if(!window.isSecureContext||!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){toast("Live camera isn't available here. Use Camera instead: pages still get cropped and cleaned automatically.",5000);return}
-  toast('Starting camera…',2000);try{LV.stream=await Promise.race([navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1440}},audio:false}),new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),9000))])}
+  toast('Starting camera…',2000);try{LV.stream=await Promise.race([navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:window.ImageCapture?1920:3840},height:{ideal:window.ImageCapture?1440:2160}},audio:false}),new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),9000))])}
   catch(e){toast("The live camera is blocked here. Use Camera instead: pages still get cropped and cleaned automatically.",5000);return}
   const v=$('#lvVid');v.srcObject=LV.stream;try{await v.play()}catch(e){}
   Object.assign(LV,{prev:null,q:null,stable:0,armed:true,busy:false,ref:null});
@@ -1307,11 +1313,11 @@ function liveTick(){
   const s=320/Math.max(v.videoWidth,v.videoHeight);lvSmall.width=Math.round(v.videoWidth*s);lvSmall.height=Math.round(v.videoHeight*s);
   lvSmall.getContext('2d').drawImage(v,0,0,lvSmall.width,lvSmall.height);
   const q=detectQuad(lvSmall);const nq=q.found?q.map(p=>[p[0]/lvSmall.width,p[1]/lvSmall.height]):null;
-  if(!LV.armed&&LV.ref){const g=grayThumb(lvSmall);let df=0;for(let i=0;i<576;i++)df+=Math.abs(g[i]-LV.ref[i]);if(df/576>16){LV.armed=true;LV.stable=0}}
-  if(nq&&LV.prev){const d=Math.max(...nq.map((p,i)=>Math.hypot(p[0]-LV.prev[i][0],p[1]-LV.prev[i][1])));if(d<.018)LV.stable++;else{LV.stable=0;if(d>.1)LV.armed=true}}
-  else{LV.stable=0;if(!nq)LV.armed=true}
+  if(!LV.armed&&LV.ref&&Date.now()-LV.capAt>1800){const g=grayThumb(lvSmall);let df=0;for(let i=0;i<576;i++)df+=Math.abs(g[i]-LV.ref[i]);if(df/576>16){LV.armed=true;LV.stable=0}}
+  if(nq&&LV.prev){const d=Math.max(...nq.map((p,i)=>Math.hypot(p[0]-LV.prev[i][0],p[1]-LV.prev[i][1])));if(d<.018)LV.stable++;else{LV.stable=0;if(d>.1&&Date.now()-LV.capAt>1800)LV.armed=true}}
+  else{LV.stable=0;if(!nq&&Date.now()-LV.capAt>1800)LV.armed=true}
   LV.prev=nq;LV.q=nq;drawLive();
-  if(LV.auto&&nq&&LV.armed&&LV.stable>=6)liveCapture();
+  if(LV.auto&&nq&&LV.armed&&LV.stable>=needFrames())liveCapture();
 }
 function drawLive(){
   const cv=$('#lvCv'),v=$('#lvVid'),r=cv.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);
@@ -1320,25 +1326,119 @@ function drawLive(){
   const msg=$('#lvMsg');
   if(!LV.q){msg.textContent='Looking for a document…';return}
   const sc=Math.min(r.width/v.videoWidth,r.height/v.videoHeight),w=v.videoWidth*sc,h=v.videoHeight*sc,ox=(r.width-w)/2,oy=(r.height-h)/2;
-  const P=LV.q.map(p=>[ox+p[0]*w,oy+p[1]*h]);const prog=Math.min(1,LV.stable/6);
+  const P=LV.q.map(p=>[ox+p[0]*w,oy+p[1]*h]);const prog=Math.min(1,LV.stable/needFrames());
   x.beginPath();P.forEach((p,i)=>i?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1]));x.closePath();
   x.fillStyle=LV.armed?`rgba(20,184,166,${.12+prog*.3})`:'rgba(255,255,255,.08)';x.fill();x.lineWidth=3;x.strokeStyle=LV.armed?'#2dd4bf':'#9ca3af';x.stroke();
-  msg.textContent=!LV.armed?'Captured ✓  Turn to the next page':LV.auto?(prog<1?'Hold steady…':'Capturing…'):'Tap the button to capture';
+  msg.textContent=!LV.armed?'Captured ✓  Turn to the next page':LV.auto?(prog<1?`Hold steady… ${Math.ceil((1-prog)*LV.hold)}`:'Capturing…'):'Tap the button to capture';
 }
 async function liveCapture(){
   const v=$('#lvVid');if(LV.busy||!v.videoWidth)return;LV.busy=true;
   const f=$('#lvFlash');f.classList.add('on');setTimeout(()=>f.classList.remove('on'),180);try{navigator.vibrate&&navigator.vibrate(35)}catch(e){}
-  try{const s=Math.min(1,2400/Math.max(v.videoWidth,v.videoHeight)),c=document.createElement('canvas');c.width=Math.round(v.videoWidth*s);c.height=Math.round(v.videoHeight*s);c.getContext('2d').drawImage(v,0,0,c.width,c.height);
-    LV.ref=grayThumb(c);const q=LV.q?LV.q.map(p=>[p[0]*c.width,p[1]*c.height]):detectQuad(c);
-    const p={id:uid++,c,q,rot:0,filter:'auto'};await processScan(p);SC.pages.push(p);LV.armed=false;LV.stable=0;updLiveUI()}
+  $('#lvMsg').textContent='Capturing… keep still';
+  try{const fr=document.createElement('canvas');fr.width=v.videoWidth;fr.height=v.videoHeight;fr.getContext('2d').drawImage(v,0,0);LV.ref=grayThumb(fr);const lq=LV.q;
+    let src=fr;
+    if(window.ImageCapture&&LV.stream){try{const ic=new ImageCapture(LV.stream.getVideoTracks()[0]);const blob=await Promise.race([ic.takePhoto(),new Promise((_,r)=>setTimeout(()=>r(new Error('t')),6000))]);const bmp=await createImageBitmap(blob);if(bmp.width*bmp.height>fr.width*fr.height)src=bmp}catch(e){}}
+    const p=await makeScanPage(src);let q=detectQuad(p.c);
+    if(!q.found&&lq&&Math.abs(p.c.width/p.c.height-fr.width/fr.height)<.03)q=lq.map(pt=>[pt[0]*p.c.width,pt[1]*p.c.height]);
+    p.q=q;await processScan(p);SC.pages.push(p);LV.armed=false;LV.stable=0;LV.capAt=Date.now();updLiveUI()}
   catch(e){console.error(e);toast('Capture failed')}
   LV.busy=false;
 }
-function updLiveUI(){const n=SC.pages.length;$('#lvN').textContent=n||'';const im=$('#lvImg');if(n){im.src=SC.pages[n-1].out;im.style.display='block'}else im.style.display='none';$('#lvAuto').textContent='Auto: '+(LV.auto?'On':'Off');$('#lvDone').textContent=n?`Done (${n})`:'Done'}
+function updLiveUI(){const n=SC.pages.length;$('#lvN').textContent=n||'';const im=$('#lvImg');if(n){im.src=SC.pages[n-1].out;im.style.display='block'}else im.style.display='none';$('#lvAuto').textContent='Auto: '+(LV.auto?'On':'Off');$('#lvHold').textContent='Hold '+LV.hold+'s';$('#lvDone').textContent=n?`Done (${n})`:'Done'}
 $('#lvClose').onclick=closeLive;$('#lvDone').onclick=closeLive;$('#lvThumb').onclick=closeLive;
 $('#lvShut').onclick=()=>{LV.armed=true;liveCapture()};
 $('#lvAuto').onclick=()=>{LV.auto=!LV.auto;updLiveUI()};
+$('#lvHold').onclick=()=>{LV.hold=HOLDS[(HOLDS.indexOf(LV.hold)+1)%HOLDS.length]||2.5;lsSet('folio.hold',String(LV.hold));LV.stable=0;updLiveUI()};
 $('#scLive').onclick=openLive;
+
+/* ---------------- OCR (text recognition) ---------------- */
+let tessP=null;
+function loadTess(){if(window.Tesseract)return Promise.resolve();if(!tessP)tessP=new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';s.onload=res;s.onerror=()=>{tessP=null;rej(new Error('Could not load the text reader'))};document.head.appendChild(s)});return tessP}
+async function ocrWorker(onProg){await loadTess();return Tesseract.createWorker('eng',1,{logger:m=>{if(m.status==='recognizing text'&&onProg)onProg(m.progress||0)}})}
+function imgFrom(url){return new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url})}
+async function ocrCanvas(worker,c){
+  const s=Math.min(1,2600/Math.max(c.width,c.height));const src=s<1?downscale(c,2600):c;
+  const{data}=await worker.recognize(src);
+  return(data.words||[]).filter(w=>w.text&&w.text.trim()&&w.confidence>25).map(w=>({t:w.text.trim(),x0:w.bbox.x0/src.width,y0:w.bbox.y0/src.height,x1:w.bbox.x1/src.width,y1:w.bbox.y1/src.height}));
+}
+function drawHiddenWords(page,words,font,toPdf){
+  for(const w of words){
+    const t=[...w.t].map(ch=>{try{font.encodeText(ch);return ch}catch(e){return ''}}).join('');if(!t)continue;
+    const[a,b]=toPdf(w.x0,w.y1),[c,d]=toPdf(w.x1,w.y0);const W=c-a,H=d-b;if(W<=0||H<=0)continue;
+    const wid=font.widthOfTextAtSize(t,1)||1,size=Math.max(1,Math.min(H*1.25,W/wid));
+    try{page.drawText(t,{x:a,y:b+H*.2,size,font,opacity:0})}catch(e){}
+  }
+}
+async function ocrDocument(){
+  if(!S.pages.length){toast('Open a PDF first');return}
+  busy('Loading the text reader…');let worker;
+  try{worker=await ocrWorker(p=>{$('#busyMsg').textContent=`${ocrMsg} ${Math.round(p*100)}%`})}catch(e){unbusy();toast("The text reader couldn't load. Check your internet connection.",4500);return}
+  let ocrMsg='',done=0;
+  try{
+    const srcs=[...new Set(S.pages.map(p=>p.src))].map(i=>S.sources[i]);
+    for(const src of srcs){
+      const doc=await PDFLib.PDFDocument.load(src.bytes,{ignoreEncryption:true});const font=await doc.embedFont(PDFLib.StandardFonts.Helvetica);let changed=false;
+      for(let i=0;i<src.pp.length;i++){
+        const pp=src.pp[i];const tc=await pp.getTextContent();const have=tc.items.reduce((n,it)=>n+(it.str||'').trim().length,0);if(have>40)continue;
+        ocrMsg=`Reading text on page ${i+1} of ${src.pp.length}…`;$('#busyMsg').textContent=ocrMsg;
+        const v1=pp.getViewport({scale:1,rotation:0}),vp=pp.getViewport({scale:Math.min(4,2400/Math.max(v1.width,v1.height)),rotation:0});
+        const c=document.createElement('canvas');c.width=Math.floor(vp.width);c.height=Math.floor(vp.height);await pp.render({canvasContext:c.getContext('2d'),viewport:vp}).promise;
+        const words=await ocrCanvas(worker,c);
+        drawHiddenWords(doc.getPage(i),words,font,(nx,ny)=>vp.convertToPdfPoint(nx*c.width,ny*c.height));changed=true;done++;
+      }
+      if(changed){const b=await doc.save();src.orig=b;src.wmSel=null;await reloadSource(src,b)}
+    }
+  }catch(e){console.error(e);toast('Text recognition failed: '+(e.message||e),4500)}
+  try{await worker.terminate()}catch(e){}
+  unbusy();relayout(true);
+  toast(done?`Text recognised on ${done} page${done>1?'s':''}. Use Edit text or Select to change it.`:'This PDF already has text. Nothing needed reading.',4500);
+}
+async function showAllText(){
+  if(!S.pages.length){toast('Open a PDF first');return}
+  busy('Collecting text…');let out=[];
+  for(let i=0;i<S.pages.length;i++){const pg=S.pages[i];const tc=await srcPage(pg).getTextContent();const ls=buildLines(tItems(tc)).sort((a,b)=>b.y-a.y||a.x0-b.x0);
+    const rows=[];for(const l of ls){const r=rows.find(r=>Math.abs(r.y-l.y)<l.size*.35);if(r)r.ls.push(l);else rows.push({y:l.y,ls:[l]})}
+    out.push(`— Page ${i+1} —\n`+rows.map(r=>r.ls.sort((a,b)=>a.x0-b.x0).map(l=>l.str).join('   ')).join('\n'))}
+  unbusy();const txt=out.join('\n\n');const empty=!txt.replace(/— Page \d+ —/g,'').trim();
+  openModal(`<h3>Document text</h3>${empty?'<p class="small">No text found. If this is a scan, use <b>File → Recognize text (OCR)</b> first.</p>':''}<textarea id="allTxt" rows="12" readonly style="font-size:13px">${esc(txt)}</textarea>
+   <div class="btns"><button class="btn" data-x>Close</button><button class="btn" id="txtSave">Save .txt</button><button class="btn pri" id="txtCopy">Copy all</button></div>`);
+  $('#txtCopy').onclick=async()=>{try{await navigator.clipboard.writeText(txt);toast('Text copied')}catch(e){const t=$('#allTxt');t.removeAttribute('readonly');t.select();toast('Select all and copy')}};
+  $('#txtSave').onclick=()=>offerDownload((S.name||'document').replace(/\.pdf$/i,'')+'.txt',new TextEncoder().encode(txt),'text/plain');
+}
+
+/* ---------------- scanner: save / open options ---------------- */
+function openScanSave(mode){
+  if(!SC.pages.length)return;let look='keep',ocr=lsGet('folio.ocr')!=='0';
+  const m=openModal(`<h3>${mode==='edit'?'Open scan in editor':'Save scan as PDF'}</h3>
+   ${mode==='save'?`<input type="text" id="ssName" value="${esc(scanName())}">`:''}
+   <p class="small" style="margin:12px 0 6px">Look</p>
+   <div class="chips" id="ssLook" style="padding:0;flex-wrap:wrap">${[['keep','As shown'],['auto','Colour'],['gray','Grayscale'],['bw','Black & white']].map(([k,l])=>`<button data-l="${k}" class="btn" style="height:36px">${l}</button>`).join('')}</div>
+   <label class="row" style="gap:10px;align-items:flex-start;margin-top:16px"><input type="checkbox" id="ssOcr" ${ocr?'checked':''} style="margin-top:3px;width:18px;height:18px;accent-color:var(--acc)"><span><b>Make text readable &amp; editable</b><br><span class="small">Recognises the words so you can search, copy, select and edit them. Needs internet and takes a few seconds per page.</span></span></label>
+   <div class="btns"><button class="btn" data-x>Cancel</button><button class="btn pri" id="ssGo">${mode==='edit'?'Open':'Save PDF'}</button></div>`);
+  const tg=()=>m.querySelectorAll('#ssLook button').forEach(b=>{const on=b.dataset.l===look;b.style.background=on?'var(--acc)':'#fff';b.style.color=on?'#fff':'';b.style.borderColor=on?'var(--acc)':''});tg();
+  m.querySelectorAll('#ssLook button').forEach(b=>b.onclick=()=>{look=b.dataset.l;tg()});
+  $('#ssGo').onclick=async()=>{
+    let name=mode==='save'?($('#ssName').value.trim()||scanName()):scanName();if(!/\.pdf$/i.test(name))name+='.pdf';
+    ocr=$('#ssOcr').checked;lsSet('folio.ocr',ocr?'1':'0');closeModal();
+    let bytes;try{bytes=await buildScanPdf(look,ocr)}catch(e){console.error(e);unbusy();toast('Could not build the PDF: '+(e.message||e),4500);return}
+    unbusy();
+    if(mode==='save')offerDownload(name,bytes);
+    else{busy('Opening in editor…');try{const append=S.pages.length>0;await addBytesAsDoc(bytes,name,append);SC.pages=[];renderScan();$('#scan').classList.remove('on');toast(append?'Scanned pages added to your document':ocr?'Scan opened. Use Edit text to change any words.':'Scan opened in the editor',4000)}catch(e){console.error(e);toast('Could not open the scan')}unbusy()}
+  };
+}
+async function buildScanPdf(look,ocr){
+  const n=SC.pages.length,outs=[];
+  for(let i=0;i<n;i++){const p=SC.pages[i];if(look==='keep'||look===p.filter)outs.push(p.out);else{busy(`Preparing page ${i+1} of ${n}…`);await tick();outs.push(await processScan(p,look))}}
+  let words=null,worker=null;
+  if(ocr){busy('Loading the text reader…');try{worker=await ocrWorker(pr=>{$('#busyMsg').textContent=`Reading text on page ${cur} of ${n}… ${Math.round(pr*100)}%`})}catch(e){toast("The text reader couldn't load, so the PDF was saved without editable text.",5000)}}
+  let cur=0;
+  if(worker){words=[];try{for(let i=0;i<n;i++){cur=i+1;$('#busyMsg').textContent=`Reading text on page ${cur} of ${n}…`;const im=await imgFrom(outs[i]);const c=downscale(im,2600);words.push(await ocrCanvas(worker,c))}}catch(e){console.error(e);words=null;toast('Text recognition failed. Saved without editable text.',4500)}try{await worker.terminate()}catch(e){}}
+  busy('Building PDF…');await tick();
+  const d=await PDFLib.PDFDocument.create();const font=words?await d.embedFont(PDFLib.StandardFonts.Helvetica):null;
+  for(let i=0;i<n;i++){const im=await d.embedJpg(dataBytes(outs[i]));const W=im.width>im.height?792:612,H=W*im.height/im.width;const pg=d.addPage([W,H]);pg.drawImage(im,{x:0,y:0,width:W,height:H});
+    if(words&&words[i])drawHiddenWords(pg,words[i],font,(nx,ny)=>[nx*W,H-ny*H])}
+  return d.save();
+}
 
 /* ---------------- file pickers: real inputs laid over the buttons, so a direct tap opens them ---------------- */
 function overlayInput(el,srcId){
