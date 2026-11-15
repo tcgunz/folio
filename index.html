@@ -186,7 +186,7 @@ input.fo{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:point
     <button data-m="save"><span class="ic" data-i="download"></span>Save PDF…</button>
     <hr>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 10</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 11</div>
   </div>
 </div>
 
@@ -1130,8 +1130,35 @@ function applyFilter(img,mode){
 }
 function sharpen(img){const w=img.width,h=img.height,d=img.data,src=new Uint8ClampedArray(d),a=.7;
   for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){const i=(y*w+x)*4;for(let k=0;k<3;k++){const c=src[i+k],bl=(src[i-4+k]+src[i+4+k]+src[i-w*4+k]+src[i+w*4+k])/4;d[i+k]=c+(c-bl)*a}}}
+/* ---- text straightening (deskew) ---- */
+function textSkew(im){
+  const w=im.width,h=im.height,d=im.data,step=Math.max(1,Math.round(Math.max(w,h)/900));
+  let sum=0,n=0;for(let y=0;y<h;y+=step)for(let x=0;x<w;x+=step){const j=(y*w+x)*4;sum+=d[j]*.3+d[j+1]*.59+d[j+2]*.11;n++}
+  const mean=sum/n,X=[],Y=[];
+  for(let y=(h*.04)|0;y<h-h*.04;y+=step)for(let x=(w*.04)|0;x<w-w*.04;x+=step){const j=(y*w+x)*4;if(d[j]*.3+d[j+1]*.59+d[j+2]*.11<mean*.62){X.push(x);Y.push(y)}}
+  if(X.length<300)return 0;
+  if(X.length>60000){const k=Math.ceil(X.length/60000);for(let i=0,o=0;i<X.length;i+=k,o++){X[o]=X[i];Y[o]=Y[i]}X.length=Y.length=Math.floor((X.length-1)/k)+1}
+  const bin=step,M=Math.ceil(Math.hypot(w,h)/bin)+4,H=new Float64Array(M);
+  const sc=a=>{const t=a*Math.PI/180,s=Math.sin(t),c=Math.cos(t);H.fill(0);for(let i=0;i<X.length;i++){const b=((Y[i]*c-X[i]*s)/bin+M/2)|0;if(b>=0&&b<M)H[b]++}let q=0;for(let i=1;i<M;i++){const df=H[i]-H[i-1];q+=df*df}return q};
+  const base=sc(0);let best=0,bs=base;
+  for(let a=-6;a<=6.001;a+=.25){const v=sc(a);if(v>bs){bs=v;best=a}}
+  let b2=best;for(let a=best-.25;a<=best+.25;a+=.05){const v=sc(a);if(v>bs){bs=v;b2=a}}
+  if(bs<base*1.6||Math.abs(b2)<.15)return 0;   // not confident, or already straight
+  return b2;
+}
+function rotateIm(im,deg){
+  const w=im.width,h=im.height,d=im.data,ring=[];
+  for(let x=0;x<w;x+=4){ring.push((x)*4,((h-1)*w+x)*4)}for(let y=0;y<h;y+=4){ring.push((y*w)*4,(y*w+w-1)*4)}
+  const lum=j=>d[j]+d[j+1]+d[j+2];ring.sort((a,b)=>lum(b)-lum(a));const top=ring.slice(0,Math.max(1,ring.length>>1));
+  let r=0,g=0,b=0;top.forEach(j=>{r+=d[j];g+=d[j+1];b+=d[j+2]});r/=top.length;g/=top.length;b/=top.length;
+  const a=document.createElement('canvas');a.width=w;a.height=h;a.getContext('2d').putImageData(im,0,0);
+  const o=document.createElement('canvas');o.width=w;o.height=h;const x=o.getContext('2d');
+  x.fillStyle=`rgb(${r|0},${g|0},${b|0})`;x.fillRect(0,0,w,h);x.translate(w/2,h/2);x.rotate(deg*Math.PI/180);x.imageSmoothingQuality='high';x.drawImage(a,-w/2,-h/2);
+  return x.getImageData(0,0,w,h);
+}
+function straighten(im,p){if(p.straight===false)return im;try{const a=textSkew(im);return a?rotateIm(im,-a):im}catch(e){return im}}
 function previewScan(p,q,look,rot,maxSide){
-  const im=warp(p.c,q,maxSide||1100);if(look!=='orig')sharpen(im);applyFilter(im,look);
+  let im=warp(p.c,q,maxSide||1100);im=straighten(im,{straight:SC.edit>=0&&SC.pages[SC.edit]===p?SC.straight:p.straight});if(look!=='orig')sharpen(im);applyFilter(im,look);
   let c=document.createElement('canvas');c.width=im.width;c.height=im.height;c.getContext('2d').putImageData(im,0,0);
   if(rot){const r=document.createElement('canvas'),o=rot%180;r.width=o?c.height:c.width;r.height=o?c.width:c.height;const x=r.getContext('2d');x.translate(r.width/2,r.height/2);x.rotate(rot*Math.PI/180);x.drawImage(c,-c.width/2,-c.height/2);c=r}
   return c;
@@ -1139,7 +1166,7 @@ function previewScan(p,q,look,rot,maxSide){
 async function makeScanPage(src){const full=downscale(src,5000);const blob=await new Promise(r=>full.toBlob(r,'image/jpeg',.95));return{id:uid++,blob,c:downscale(full,1600),rot:0,filter:'auto'}}
 async function fullCanvas(p){if(!p.blob)return p.c;const bmp=await createImageBitmap(p.blob);const c=document.createElement('canvas');c.width=bmp.width;c.height=bmp.height;c.getContext('2d').drawImage(bmp,0,0);try{bmp.close()}catch(e){}return c}
 async function processScan(p,look){
-  await tick();const full=await fullCanvas(p),k=full.width/p.c.width;const im=warp(full,p.q.map(([x,y])=>[x*k,y*k]));if((look||p.filter)!=='orig')sharpen(im);applyFilter(im,look||p.filter);
+  await tick();const full=await fullCanvas(p),k=full.width/p.c.width;let im=warp(full,p.q.map(([x,y])=>[x*k,y*k]));im=straighten(im,p);if((look||p.filter)!=='orig')sharpen(im);applyFilter(im,look||p.filter);
   let c=document.createElement('canvas');c.width=im.width;c.height=im.height;c.getContext('2d').putImageData(im,0,0);
   if(p.rot){const r=document.createElement('canvas'),q=p.rot%180;r.width=q?c.height:c.width;r.height=q?c.width:c.height;const x=r.getContext('2d');x.translate(r.width/2,r.height/2);x.rotate(p.rot*Math.PI/180);x.drawImage(c,-c.width/2,-c.height/2);c=r}
   const url=c.toDataURL('image/jpeg',.92);if(look)return url;p.out=url;p.ow=c.width;p.oh=c.height;
@@ -1155,11 +1182,11 @@ $('#scEdit').onclick=()=>openScanSave('edit');
 
 /* --- crop editor --- */
 let CR={s:1,ox:0,oy:0};
-function openCrop(i){const p=SC.pages[i];SC.edit=i;SC.view='corners';SC.pv=null;SC.q=p.q.map(x=>[...x]);SC.rot=p.rot;SC.filter=p.filter;$('#crop').classList.add('on');renderFilters();requestAnimationFrame(drawCrop)}
+function openCrop(i){const p=SC.pages[i];SC.edit=i;SC.straight=p.straight!==false;SC.view='corners';SC.pv=null;SC.q=p.q.map(x=>[...x]);SC.rot=p.rot;SC.filter=p.filter;$('#crop').classList.add('on');renderFilters();requestAnimationFrame(drawCrop)}
 function setCropView(v){SC.view=v;$('#crTitle').textContent=v==='preview'?'Preview · tap to adjust corners':'Adjust corners';
   if(v==='preview'){const p=SC.pages[SC.edit];setTimeout(()=>{try{SC.pv=previewScan(p,SC.q,SC.filter,SC.rot)}catch(e){SC.pv=null}drawCrop()},10)}else drawCrop()}
-function renderFilters(){$('#crFilters').innerHTML=FILTERS.map(([k,l])=>`<button data-f="${k}" class="${SC.filter===k?'on':''}">${l}</button>`).join('');$('#crRot').textContent=SC.rot?`Rotated ${SC.rot}°`:''}
-$('#crFilters').addEventListener('click',e=>{const b=e.target.closest('[data-f]');if(b){SC.filter=b.dataset.f;renderFilters();setCropView('preview')}});
+function renderFilters(){$('#crFilters').innerHTML=FILTERS.map(([k,l])=>`<button data-f="${k}" class="${SC.filter===k?'on':''}">${l}</button>`).join('')+`<button data-st="1" class="${SC.straight?'on':''}">Straighten text: ${SC.straight?'On':'Off'}</button>`;$('#crRot').textContent=SC.rot?`Rotated ${SC.rot}°`:''}
+$('#crFilters').addEventListener('click',e=>{if(e.target.closest('[data-st]')){SC.straight=!SC.straight;renderFilters();setCropView('preview');return}const b=e.target.closest('[data-f]');if(b){SC.filter=b.dataset.f;renderFilters();setCropView('preview')}});
 function drawCrop(){
   const cv=$('#cropCv'),p=SC.pages[SC.edit];if(!p)return;const r=cv.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);
   if(cv.width!==Math.round(r.width*dpr)||cv.height!==Math.round(r.height*dpr)){cv.width=Math.round(r.width*dpr);cv.height=Math.round(r.height*dpr)}
@@ -1193,7 +1220,7 @@ $('#crAuto').onclick=()=>{SC.q=detectQuad(SC.pages[SC.edit].c);setCropView('corn
 $('#crFull').onclick=()=>{const c=SC.pages[SC.edit].c;SC.q=[[0,0],[c.width,0],[c.width,c.height],[0,c.height]];setCropView('corners')};
 $('#crRotB').onclick=()=>{SC.rot=(SC.rot+90)%360;renderFilters();setCropView('preview')};
 $('#crDel').onclick=()=>{SC.pages.splice(SC.edit,1);$('#crop').classList.remove('on');renderScan()};
-$('#crDone').onclick=async()=>{const p=SC.pages[SC.edit];p.q=SC.q.map(x=>[...x]);p.rot=SC.rot;p.filter=SC.filter;busy('Cleaning up page…');try{await processScan(p)}catch(e){console.error(e);toast('Could not process that page')}unbusy();$('#crop').classList.remove('on');renderScan()};
+$('#crDone').onclick=async()=>{const p=SC.pages[SC.edit];p.straight=SC.straight;p.q=SC.q.map(x=>[...x]);p.rot=SC.rot;p.filter=SC.filter;busy('Cleaning up page…');try{await processScan(p)}catch(e){console.error(e);toast('Could not process that page')}unbusy();$('#crop').classList.remove('on');renderScan()};
 
 /* ---------------- text structure: lines & paragraphs ---------------- */
 function ensureText(e,pg){if(!e.tit&&!e.tload){e.tload=1;getTC(pg).then(tc=>{e.tit=tItems(tc);e.tb=null;if(els.get(e.id)===e)drawOverlay(e)})}}
