@@ -186,6 +186,7 @@ input.fo{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:point
     <button data-m="save"><span class="ic" data-i="download"></span>Save PDF…</button>
     <hr>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 9</div>
   </div>
 </div>
 
@@ -1027,7 +1028,7 @@ function detectQuad(c,strict){
       const sq=area*s*s;if(bestN/sq<.86)return fb;                       // solid, rectangular blob
       let sIn=0,sAll=0;for(let i=0;i<N;i++){sAll+=g[i];if(lab[i]===bestId)sIn+=g[i]}
       const mIn=sIn/bestN,mOut=(sAll-sIn)/Math.max(1,N-bestN);if(mIn-mOut<28)return fb;   // clearly brighter than surroundings
-      const edge=Q.filter(([x,y])=>x<W*.015||y<H*.015||x>W*.985||y>H*.985).length;if(edge>=2)return fb; // not cut off by the frame
+      const edge=Q.filter(([x,y])=>x<W*.015||y<H*.015||x>W*.985||y>H*.985).length;if(edge>=2){const f=fb.slice();f.reason='edge';return f} // not cut off by the frame
       for(let k=0;k<4;k++){const a=Q[(k+3)%4],b=Q[k],cc=Q[(k+1)%4],v1=[a[0]-b[0],a[1]-b[1]],v2=[cc[0]-b[0],cc[1]-b[1]];
         const ang=Math.acos(Math.max(-1,Math.min(1,(v1[0]*v2[0]+v1[1]*v2[1])/(Math.hypot(...v1)*Math.hypot(...v2)||1))))*180/Math.PI;if(ang<55||ang>125)return fb}
       const D=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]),w1=D(Q[0],Q[1]),w2=D(Q[3],Q[2]),h1=D(Q[0],Q[3]),h2=D(Q[1],Q[2]);
@@ -1360,7 +1361,7 @@ function liveTick(){
   const v=$('#lvVid');if(!v.videoWidth||LV.busy)return;
   const s=320/Math.max(v.videoWidth,v.videoHeight);lvSmall.width=Math.round(v.videoWidth*s);lvSmall.height=Math.round(v.videoHeight*s);
   lvSmall.getContext('2d').drawImage(v,0,0,lvSmall.width,lvSmall.height);
-  const q=detectQuad(lvSmall,true);const nq=q.found?q.map(p=>[p[0]/lvSmall.width,p[1]/lvSmall.height]):null;
+  const q=detectQuad(lvSmall,true);LV.cut=q.reason==='edge'?(LV.cut||0)+1:0;const nq=q.found?q.map(p=>[p[0]/lvSmall.width,p[1]/lvSmall.height]):null;
   if(!LV.armed&&LV.ref&&Date.now()-LV.capAt>1800){const g=grayThumb(lvSmall);let df=0;for(let i=0;i<576;i++)df+=Math.abs(g[i]-LV.ref[i]);if(df/576>16){LV.armed=true;LV.stable=0}}
   if(nq&&LV.prev){const d=Math.max(...nq.map((p,i)=>Math.hypot(p[0]-LV.prev[i][0],p[1]-LV.prev[i][1])));if(d<.018)LV.stable++;else{LV.stable=0;if(d>.1&&Date.now()-LV.capAt>1800)LV.armed=true}}
   else{LV.stable=0;if(!nq&&Date.now()-LV.capAt>1800)LV.armed=true}
@@ -1372,7 +1373,7 @@ function drawLive(){
   if(cv.width!==Math.round(r.width*dpr)){cv.width=Math.round(r.width*dpr);cv.height=Math.round(r.height*dpr)}
   const x=cv.getContext('2d');x.setTransform(dpr,0,0,dpr,0,0);x.clearRect(0,0,r.width,r.height);
   const msg=$('#lvMsg');
-  if(!LV.q){msg.textContent=LV.auto?'Looking for a document… (place it on a darker surface)':'Looking for a document…';return}
+  if(!LV.q){msg.textContent=LV.cut>=3?'Part of the page is off-screen. Move the phone back a little.':LV.auto?'Looking for a document… (place it on a darker surface)':'Looking for a document…';return}
   const sc=Math.min(r.width/v.videoWidth,r.height/v.videoHeight),w=v.videoWidth*sc,h=v.videoHeight*sc,ox=(r.width-w)/2,oy=(r.height-h)/2;
   const P=LV.q.map(p=>[ox+p[0]*w,oy+p[1]*h]);const prog=Math.min(1,LV.stable/needFrames());
   x.beginPath();P.forEach((p,i)=>i?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1]));x.closePath();
