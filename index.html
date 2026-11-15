@@ -209,7 +209,7 @@ input.fo{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:point
     <button data-m="lib"><span class="ic" data-i="books"></span>Library</button>
     <hr>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 17</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 18</div>
   </div>
 </div>
 
@@ -512,7 +512,7 @@ const rot=pg=>(pg.base+pg.extra)%360;
 const srcPage=pg=>S.sources[pg.src].pp[pg.idx];
 const getVP=pg=>srcPage(pg).getViewport({scale:S.scale,rotation:rot(pg)});
 
-function snapshot(){S.undo.push(JSON.stringify(S.pages));if(S.undo.length>80)S.undo.shift();S.redo=[];updateUI()}
+function snapshot(){S.dirty=true;S.undo.push(JSON.stringify(S.pages));if(S.undo.length>80)S.undo.shift();S.redo=[];updateUI()}
 function layoutSig(){return S.pages.map(p=>p.id+':'+p.extra).join(',')}
 function restore(json){const before=layoutSig();S.pages=JSON.parse(json);S.sel=null;S.msel=null;if(layoutSig()===before){redrawAll()}else relayout();renderSelbar();updateUI()}
 function undo(){if(!S.undo.length)return;S.redo.push(JSON.stringify(S.pages));restore(S.undo.pop())}
@@ -540,7 +540,7 @@ async function addSource(buf,name){
   }catch(e){}
   return src.pp.map((p,i)=>({id:uid++,src:src.id,idx:i,extra:0,base:p.rotate||0,annots:[]}));
 }
-function resetDoc(){S.libId=null;S.libFolder=null;S.sources=[];S.pages=[];S.undo=[];S.redo=[];S.imgs={};S.sel=null;imgEls.clear()}
+function resetDoc(){S.dirty=false;S.libId=null;S.libFolder=null;S.sources=[];S.pages=[];S.undo=[];S.redo=[];S.imgs={};S.sel=null;imgEls.clear()}
 async function openFiles(files,append){
   if(!files.length)return;
   busy('Opening…');await tick();
@@ -970,7 +970,7 @@ async function openSave(){
     lsSet('folio.dl.doc',wantDl?'1':'0');if(folder)lsSet('folio.lastFolder.doc',folder);closeModal();busy('Building PDF…');await tick();let bytes;
     try{bytes=await exportPdf()}catch(err){console.error(err);unbusy();toast('Could not build the PDF: '+(err.message||err),5000);return}
     if(folder){busy('Saving to Library…');try{const id=await libSave(n,folder,bytes,rep?S.libId:null);S.libId=id;S.libFolder=folder;toast(`Saved to ${folder}`)}catch(e){console.error(e);toast('Could not save to Library: '+(e.message||e),4500)}}
-    unbusy();if(wantDl)offerDownload(n,bytes)};
+    S.dirty=false;unbusy();if(wantDl)offerDownload(n,bytes)};
 }
 
 /* ---------------- top bar ---------------- */
@@ -1853,10 +1853,17 @@ addEventListener('popstate',()=>{
   if(NAV.skip>0){NAV.skip--;return}
   const top=NAV.stack[NAV.stack.length-1];
   if(top){NAV.fromPop=true;try{top.close()}finally{NAV.fromPop=false}if(NAV.stack[NAV.stack.length-1]===top)NAV.stack.pop();return}
+  if(S.pages.length){try{history.pushState({folio:0},'')}catch(e){}leaveDoc();return}
   if(Date.now()-NAV.last<2200){history.back();return}
   NAV.last=Date.now();toast('Press back again to exit Folio',2200);try{history.pushState({folio:0},'')}catch(e){}
 });
 try{history.pushState({folio:0},'')}catch(e){}
+function leaveDoc(){
+  const go=()=>{const fromLib=!!S.libId;resetDoc();closeDrawers();relayout(false);if(fromLib)openLibrary()};
+  if(!S.dirty){go();return}
+  openModal(`<h3>Leave this document?</h3><p class="small">You have changes that haven't been saved.</p><div class="btns"><button class="btn red l" id="lvGo">Leave without saving</button><button class="btn" data-x>Stay</button><button class="btn pri" id="lvSave">Save</button></div>`);
+  $('#lvGo').onclick=()=>{closeModal();go()};$('#lvSave').onclick=()=>{closeModal();openSave()};
+}
 navWatch($('#menu'),()=>$('#menu').classList.remove('on'));
 document.querySelectorAll('.drawer').forEach(d=>navWatch(d,()=>d.classList.remove('on')));
 navWatch($('#lib'),()=>$('#lib').classList.remove('on'));
