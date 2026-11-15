@@ -329,7 +329,7 @@ body[data-theme=rose]{--acc:#be185d;--accd:#9d174d;--acc2:#fce7f3;--bg:#faf4f7;-
     <button data-m="rctoggle" id="mRc"><span class="ic" data-i="grid"></span><span id="mRcL">Hide Receipts &amp; expenses</span></button>
     <hr>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 52</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 53</div>
   </div>
 </div>
 
@@ -655,7 +655,7 @@ const S={sources:[],pages:[],scale:1,tool:'hand',sel:null,pending:null,undo:[],r
   colors:{text:'#111827',pen:'#1d4ed8',hl:'#fde047',shape:'#dc2626',mark:'#111827'},widths:{pen:2,shape:2},fontSize:14};
 const INK=['#111827','#1d4ed8','#dc2626','#15803d','#7c3aed','#ea580c'];
 const HLC=['#fde047','#86efac','#93c5fd','#f9a8d4','#fdba74'];
-const TOOLS=[['hand','Scroll'],['select','Select'],['rotpage','Rotate'],'|',['edittext','Edit text'],['text','Add text'],['image','Add image'],'|',['pen','Draw'],['hl','Highlight'],['wo','White-out'],'|',['sign','Sign'],['check','Check'],['cross','Cross'],'|',['rect','Box'],['ellipse','Circle'],['line','Line'],['arrow','Arrow'],'|',['wmark','Watermarks']];
+const TOOLS=[['hand','Scroll'],['select','Select'],['rotpage','Rotate'],'|',['edittext','Edit text'],['text','Add text'],['image','Add image'],['sign','Sign'],'|',['pen','Draw'],['hl','Highlight'],['wo','White-out'],'|',['check','Check'],['cross','Cross'],'|',['rect','Box'],['ellipse','Circle'],['line','Line'],['arrow','Arrow'],'|',['wmark','Watermarks']];
 const CKEY={text:'text',pen:'pen',hl:'hl',rect:'shape',ellipse:'shape',line:'shape',arrow:'shape',check:'mark',cross:'mark'};
 const getPg=id=>S.pages.find(p=>p.id===id);
 const rot=pg=>(pg.base+pg.extra)%360;
