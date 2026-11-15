@@ -268,7 +268,7 @@ table.xs tfoot td{font-weight:700;padding:10px 8px;background:#f9fafb}
     <button data-m="rctoggle" id="mRc"><span class="ic" data-i="grid"></span><span id="mRcL">Hide Receipts &amp; expenses</span></button>
     <hr>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 43</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 44</div>
   </div>
 </div>
 
@@ -1069,7 +1069,7 @@ function menuAct(m){
   if(m==='blank')insertBlank();
   if(m==='form')openForm();
   if(m==='wm')openWm();
-  if(m==='lib'||m==='libdocs'){LIB.folder='';openLibrary()}
+  if(m==='lib'||m==='libdocs')openDocsLibrary();
   if(m==='scanrc')openScanner('receipt');
   if(m==='rclib'||m==='rcsheet'){(async()=>{await libFolders();if(!LIB.folders.includes('Receipts')&&!LIB.folders.some(isReceiptFolder))await libSetFolders([...LIB.folders,'Receipts']);LIB.folder=LIB.folders.find(isReceiptFolder)||'Receipts';await openLibrary();if(m==='rcsheet')openSheet()})()}
   if(m==='rctoggle'){const on=lsGet('folio.receipts')==='0';lsSet('folio.receipts',on?'1':'0');applyRcSetting();toast(on?'Receipts & expenses shown':'Receipts & expenses hidden. Turn back on from the File menu')}
@@ -1084,7 +1084,7 @@ document.querySelectorAll('[data-m]').forEach(b=>b.addEventListener('click',ev=>
 $('#fOpen').onchange=e=>openFiles([...e.files],false);
 $('#fAdd').onchange=e=>openFiles([...e.files],S.pages.length>0);
 $('#bScan').onclick=()=>openScanner('doc');
-$('#bLib').onclick=()=>openLibrary();
+$('#bLib').onclick=()=>openDocsLibrary();
 $('#bSave').onclick=openSave;
 $('#bUndo').onclick=undo;$('#bRedo').onclick=redo;
 $('#zIn').onclick=()=>{S.scale=Math.min(5,S.scale*1.2);relayout(true)};
@@ -1870,6 +1870,7 @@ async function libRestore(file){
   }catch(e){console.error(e);unbusy();toast('Could not restore: '+(e.message||e),4500)}
 }
 /* library screen */
+async function openDocsLibrary(){await libFolders();LIB.folder=LIB.folders.includes('Documents')?'Documents':(LIB.folders.find(f=>!isReceiptFolder(f))||'');LIB.q='';const sb=$('#libSearch');if(sb)sb.value='';return openLibrary()}
 async function openLibrary(){closeDrawers();$('#lib').classList.add('on');await libFolders();renderLib()}
 $('#libBack').onclick=()=>{LIB.sel=null;$('#lib').classList.remove('on')};
 $('#libSearch').oninput=e=>{LIB.q=e.target.value;renderLibGrid()};
