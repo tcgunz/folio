@@ -233,7 +233,7 @@ input.fo{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:point
 </div>
 
 <div id="crop">
-  <div class="sh"><button class="tb" id="crCancel"><span class="ic" data-i="back"></span></button><b>Adjust corners</b><span class="sp"></span><span class="small" style="color:#9ca3af;padding-right:8px" id="crRot"></span></div>
+  <div class="sh"><button class="tb" id="crCancel"><span class="ic" data-i="back"></span></button><b id="crTitle">Adjust corners</b><span class="sp"></span><span class="small" style="color:#9ca3af;padding-right:8px" id="crRot"></span></div>
   <div id="cropArea"><canvas id="cropCv"></canvas></div>
   <div class="chips" id="crFilters"></div>
   <div class="sf">
@@ -1044,9 +1044,9 @@ function homography(from,to){
     for(let r=0;r<8;r++){if(r===c)continue;const f=A[r][c]/A[c][c];if(!f)continue;for(let k=c;k<8;k++)A[r][k]-=f*A[c][k];b[r]-=f*b[c]}}
   return b.map((v,i)=>v/A[i][i]);
 }
-function warp(c,q){
+function warp(c,q,maxSide){
   const D=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]);let W=Math.max(D(q[0],q[1]),D(q[3],q[2])),H=Math.max(D(q[0],q[3]),D(q[1],q[2]));
-  const cap=4400/Math.max(W,H);if(cap<1){W*=cap;H*=cap}W=Math.max(8,Math.round(W));H=Math.max(8,Math.round(H));
+  const cap=(maxSide||4400)/Math.max(W,H);if(cap<1){W*=cap;H*=cap}W=Math.max(8,Math.round(W));H=Math.max(8,Math.round(H));
   const h=homography([[0,0],[W,0],[W,H],[0,H]],q);const sw=c.width,sh=c.height,sd=c.getContext('2d').getImageData(0,0,sw,sh).data;
   const out=new ImageData(W,H),od=out.data,mx=sw-1.001,my=sh-1.001,row=sw*4;
   for(let y=0;y<H;y++){const v=y+.5;for(let x=0;x<W;x++){const u=x+.5,den=h[6]*u+h[7]*v+1;let sx=(h[0]*u+h[1]*v+h[2])/den-.5,sy=(h[3]*u+h[4]*v+h[5])/den-.5;
@@ -1072,6 +1072,12 @@ function applyFilter(img,mode){
 }
 function sharpen(img){const w=img.width,h=img.height,d=img.data,src=new Uint8ClampedArray(d),a=.7;
   for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){const i=(y*w+x)*4;for(let k=0;k<3;k++){const c=src[i+k],bl=(src[i-4+k]+src[i+4+k]+src[i-w*4+k]+src[i+w*4+k])/4;d[i+k]=c+(c-bl)*a}}}
+function previewScan(p,q,look,rot,maxSide){
+  const im=warp(p.c,q,maxSide||1100);if(look!=='orig')sharpen(im);applyFilter(im,look);
+  let c=document.createElement('canvas');c.width=im.width;c.height=im.height;c.getContext('2d').putImageData(im,0,0);
+  if(rot){const r=document.createElement('canvas'),o=rot%180;r.width=o?c.height:c.width;r.height=o?c.width:c.height;const x=r.getContext('2d');x.translate(r.width/2,r.height/2);x.rotate(rot*Math.PI/180);x.drawImage(c,-c.width/2,-c.height/2);c=r}
+  return c;
+}
 async function makeScanPage(src){const full=downscale(src,5000);const blob=await new Promise(r=>full.toBlob(r,'image/jpeg',.95));return{id:uid++,blob,c:downscale(full,1600),rot:0,filter:'auto'}}
 async function fullCanvas(p){if(!p.blob)return p.c;const bmp=await createImageBitmap(p.blob);const c=document.createElement('canvas');c.width=bmp.width;c.height=bmp.height;c.getContext('2d').drawImage(bmp,0,0);try{bmp.close()}catch(e){}return c}
 async function processScan(p,look){
@@ -1091,14 +1097,20 @@ $('#scEdit').onclick=()=>openScanSave('edit');
 
 /* --- crop editor --- */
 let CR={s:1,ox:0,oy:0};
-function openCrop(i){const p=SC.pages[i];SC.edit=i;SC.q=p.q.map(x=>[...x]);SC.rot=p.rot;SC.filter=p.filter;$('#crop').classList.add('on');renderFilters();requestAnimationFrame(drawCrop)}
+function openCrop(i){const p=SC.pages[i];SC.edit=i;SC.view='corners';SC.pv=null;SC.q=p.q.map(x=>[...x]);SC.rot=p.rot;SC.filter=p.filter;$('#crop').classList.add('on');renderFilters();requestAnimationFrame(drawCrop)}
+function setCropView(v){SC.view=v;$('#crTitle').textContent=v==='preview'?'Preview · tap to adjust corners':'Adjust corners';
+  if(v==='preview'){const p=SC.pages[SC.edit];setTimeout(()=>{try{SC.pv=previewScan(p,SC.q,SC.filter,SC.rot)}catch(e){SC.pv=null}drawCrop()},10)}else drawCrop()}
 function renderFilters(){$('#crFilters').innerHTML=FILTERS.map(([k,l])=>`<button data-f="${k}" class="${SC.filter===k?'on':''}">${l}</button>`).join('');$('#crRot').textContent=SC.rot?`Rotated ${SC.rot}°`:''}
-$('#crFilters').addEventListener('click',e=>{const b=e.target.closest('[data-f]');if(b){SC.filter=b.dataset.f;renderFilters()}});
+$('#crFilters').addEventListener('click',e=>{const b=e.target.closest('[data-f]');if(b){SC.filter=b.dataset.f;renderFilters();setCropView('preview')}});
 function drawCrop(){
   const cv=$('#cropCv'),p=SC.pages[SC.edit];if(!p)return;const r=cv.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);
   if(cv.width!==Math.round(r.width*dpr)||cv.height!==Math.round(r.height*dpr)){cv.width=Math.round(r.width*dpr);cv.height=Math.round(r.height*dpr)}
   const x=cv.getContext('2d');x.setTransform(dpr,0,0,dpr,0,0);x.clearRect(0,0,r.width,r.height);
   const m=26,s=Math.min((r.width-2*m)/p.c.width,(r.height-2*m)/p.c.height),ox=(r.width-p.c.width*s)/2,oy=(r.height-p.c.height*s)/2;CR={s,ox,oy};
+  if(SC.view==='preview'){CR={s,ox,oy};if(SC.pv){const pv=SC.pv,ps=Math.min((r.width-2*m)/pv.width,(r.height-2*m)/pv.height),pw=pv.width*ps,ph=pv.height*ps;
+      x.save();x.shadowColor='rgba(0,0,0,.5)';x.shadowBlur=18;x.drawImage(pv,(r.width-pw)/2,(r.height-ph)/2,pw,ph);x.restore()}
+    else{x.fillStyle='#9ca3af';x.font='14px Inter, sans-serif';x.textAlign='center';x.fillText('Making preview…',r.width/2,r.height/2)}
+    return}
   x.drawImage(p.c,ox,oy,p.c.width*s,p.c.height*s);
   const Q=SC.q.map(([a,b])=>[ox+a*s,oy+b*s]);
   x.fillStyle='rgba(0,0,0,.55)';x.beginPath();x.rect(0,0,r.width,r.height);x.moveTo(...Q[0]);for(let i=3;i>=1;i--)x.lineTo(...Q[i]);x.closePath();x.fill('evenodd');
@@ -1111,7 +1123,7 @@ function drawCrop(){
 }
 window.addEventListener('resize',()=>{if($('#crop').classList.contains('on'))drawCrop()});
 const cropCv=$('#cropCv');
-cropCv.addEventListener('pointerdown',ev=>{const r=cropCv.getBoundingClientRect(),px=ev.clientX-r.left,py=ev.clientY-r.top;let bi=-1,bd=1e9;
+cropCv.addEventListener('pointerdown',ev=>{if(SC.view==='preview'){setCropView('corners');return}const r=cropCv.getBoundingClientRect(),px=ev.clientX-r.left,py=ev.clientY-r.top;let bi=-1,bd=1e9;
   SC.q.forEach((q,i)=>{const d=Math.hypot(CR.ox+q[0]*CR.s-px,CR.oy+q[1]*CR.s-py);if(d<bd){bd=d;bi=i}});
   if(bd<80){SC.drag=bi;SC.grab=[px-(CR.ox+SC.q[bi][0]*CR.s),py-(CR.oy+SC.q[bi][1]*CR.s)];cropCv.setPointerCapture(ev.pointerId);drawCrop()}});
 cropCv.addEventListener('pointermove',ev=>{if(SC.drag<0)return;const r=cropCv.getBoundingClientRect(),p=SC.pages[SC.edit];
@@ -1119,9 +1131,9 @@ cropCv.addEventListener('pointermove',ev=>{if(SC.drag<0)return;const r=cropCv.ge
 const endCrop=()=>{if(SC.drag>=0){SC.drag=-1;drawCrop()}};
 cropCv.addEventListener('pointerup',endCrop);cropCv.addEventListener('pointercancel',endCrop);
 $('#crCancel').onclick=()=>$('#crop').classList.remove('on');
-$('#crAuto').onclick=()=>{SC.q=detectQuad(SC.pages[SC.edit].c);drawCrop()};
-$('#crFull').onclick=()=>{const c=SC.pages[SC.edit].c;SC.q=[[0,0],[c.width,0],[c.width,c.height],[0,c.height]];drawCrop()};
-$('#crRotB').onclick=()=>{SC.rot=(SC.rot+90)%360;renderFilters()};
+$('#crAuto').onclick=()=>{SC.q=detectQuad(SC.pages[SC.edit].c);setCropView('corners')};
+$('#crFull').onclick=()=>{const c=SC.pages[SC.edit].c;SC.q=[[0,0],[c.width,0],[c.width,c.height],[0,c.height]];setCropView('corners')};
+$('#crRotB').onclick=()=>{SC.rot=(SC.rot+90)%360;renderFilters();setCropView('preview')};
 $('#crDel').onclick=()=>{SC.pages.splice(SC.edit,1);$('#crop').classList.remove('on');renderScan()};
 $('#crDone').onclick=async()=>{const p=SC.pages[SC.edit];p.q=SC.q.map(x=>[...x]);p.rot=SC.rot;p.filter=SC.filter;busy('Cleaning up page…');try{await processScan(p)}catch(e){console.error(e);toast('Could not process that page')}unbusy();$('#crop').classList.remove('on');renderScan()};
 
@@ -1451,10 +1463,17 @@ function openScanSave(mode){
    ${mode==='save'?`<input type="text" id="ssName" value="${esc(scanName())}">`:''}
    <p class="small" style="margin:12px 0 6px">Look</p>
    <div class="chips" id="ssLook" style="padding:0;flex-wrap:wrap">${[['keep','As shown'],['auto','Colour'],['gray','Grayscale'],['bw','Black & white']].map(([k,l])=>`<button data-l="${k}" class="btn" style="height:36px">${l}</button>`).join('')}</div>
+   <div style="margin-top:12px;background:#eef0f3;border-radius:12px;height:230px;display:grid;place-items:center;overflow:hidden"><img id="ssPrev" alt="Preview" style="max-width:100%;max-height:220px;box-shadow:0 2px 10px rgba(0,0,0,.2)"></div>
+   <p class="small" style="margin:6px 0 0;text-align:center" id="ssPrevL"></p>
    <label class="row" style="gap:10px;align-items:flex-start;margin-top:16px"><input type="checkbox" id="ssOcr" ${ocr?'checked':''} style="margin-top:3px;width:18px;height:18px;accent-color:var(--acc)"><span><b>Make text readable &amp; editable</b><br><span class="small">Recognises the words so you can search, copy, select and edit them. Needs internet and takes a few seconds per page.</span></span></label>
    <div class="btns"><button class="btn" data-x>Cancel</button><button class="btn pri" id="ssGo">${mode==='edit'?'Open':'Save PDF'}</button></div>`);
   const tg=()=>m.querySelectorAll('#ssLook button').forEach(b=>{const on=b.dataset.l===look;b.style.background=on?'var(--acc)':'#fff';b.style.color=on?'#fff':'';b.style.borderColor=on?'var(--acc)':''});tg();
-  m.querySelectorAll('#ssLook button').forEach(b=>b.onclick=()=>{look=b.dataset.l;tg()});
+  const pvc={};const showPv=()=>{const p=SC.pages[0];const img=$('#ssPrev');if(!img)return;$('#ssPrevL').textContent=`Preview of page 1${SC.pages.length>1?` of ${SC.pages.length}`:''}`;
+    if(look==='keep'){img.src=p.out;return}
+    if(pvc[look]){img.src=pvc[look];return}
+    img.style.opacity=.4;setTimeout(()=>{try{pvc[look]=previewScan(p,p.q,look,p.rot,900).toDataURL('image/jpeg',.85);if(look===cur)img.src=pvc[look]}catch(e){}img.style.opacity=1},10)};
+  let cur=look;
+  m.querySelectorAll('#ssLook button').forEach(b=>b.onclick=()=>{look=cur=b.dataset.l;tg();showPv()});showPv();
   $('#ssGo').onclick=async()=>{
     let name=mode==='save'?($('#ssName').value.trim()||scanName()):scanName();if(!/\.pdf$/i.test(name))name+='.pdf';
     ocr=$('#ssOcr').checked;lsSet('folio.ocr',ocr?'1':'0');closeModal();
