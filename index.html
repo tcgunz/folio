@@ -141,6 +141,24 @@ input.fo{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:point
 .sbtn.pri{background:#14b8a6;color:#04201d}
 .sbtn:disabled{opacity:.35}
 #cropArea{flex:1;position:relative}
+#lib{position:fixed;inset:0;z-index:45;background:var(--bg);color:var(--ink);display:none;flex-direction:column}
+#lib.on{display:flex}
+#lib .sh{background:#fff;border-bottom:1px solid var(--line)}
+#lib .sh .tb:hover{background:#f1f3f5}
+#libSearch{width:100%;padding:11px 14px;border:1px solid var(--line);border-radius:12px;font:inherit;font-size:16px;background:#fff}
+#libChips{padding:10px 12px 0}
+#libChips button{background:#fff;border:1px solid var(--line);color:var(--ink)}
+#libChips button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.lgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px}
+.lcard{background:#fff;border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:3px;cursor:pointer;border:1px solid var(--line)}
+.lcard:active{transform:scale(.98)}
+.lth{aspect-ratio:3/4;background:#f3f4f6;border-radius:6px;display:grid;place-items:center;overflow:hidden;margin-bottom:4px;color:var(--muted)}
+.lth img{width:100%;height:100%;object-fit:contain}
+.lcard b{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lcard span{font-size:11px;color:var(--muted)}
+.lacts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.lacts .btn{display:flex;align-items:center;justify-content:center;gap:6px}
+.lacts .btn.pri{grid-column:1/-1}
 #live{position:fixed;inset:0;background:#000;z-index:56;display:none}
 #live.on{display:block}
 #lvVid,#lvCv{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
@@ -168,6 +186,7 @@ input.fo{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:point
   <div class="logo"><i>F</i><span>Folio</span></div>
   <button class="tb" id="bFile"><span class="ic" data-i="folder"></span><span class="lb">File</span></button>
   <button class="tb" id="bScan"><span class="ic" data-i="scan"></span><span class="lb">Scan</span></button>
+  <button class="tb" id="bLib"><span class="ic" data-i="books"></span><span class="lb">Library</span></button>
   <div class="sp"></div>
   <button class="tb" id="bUndo" title="Undo (Ctrl+Z)"><span class="ic" data-i="undo"></span></button>
   <button class="tb" id="bRedo" title="Redo"><span class="ic" data-i="redo"></span></button>
@@ -184,9 +203,10 @@ input.fo{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:point
     <hr>
     <button data-m="scan"><span class="ic" data-i="scan"></span>Scan document</button>
     <button data-m="save"><span class="ic" data-i="download"></span>Save PDF…</button>
+    <button data-m="lib"><span class="ic" data-i="books"></span>Library</button>
     <hr>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 13</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 14</div>
   </div>
 </div>
 
@@ -199,6 +219,7 @@ input.fo{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:point
       <p>Add text, draw, highlight, white-out, sign, fill forms, rearrange and merge pages, or scan paper into a clean PDF.</p>
       <button class="big" data-m="open"><span class="ic" data-i="folder"></span><span><b>Open a PDF</b><small>From your device, or drop it here</small></span></button>
       <button class="big" data-m="scan"><span class="ic" data-i="scan"></span><span><b>Scan a document</b><small>Use your camera or photos</small></span></button>
+      <button class="big" data-m="lib"><span class="ic" data-i="books"></span><span><b>Your Library</b><small>Receipts and documents you've saved</small></span></button>
       <button class="big" data-m="blank"><span class="ic" data-i="filePlus"></span><span><b>Start with a blank page</b><small>Letter size, ready to write on</small></span></button>
       <div class="note">Your files stay on your device. Nothing gets uploaded.</div>
     </div>
@@ -220,6 +241,14 @@ input.fo{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:point
 <div id="live"><video id="lvVid" playsinline muted autoplay></video><canvas id="lvCv"></canvas><div id="lvFlash"></div>
   <div class="lvTop"><button class="tb" id="lvClose"><span class="ic" data-i="x"></span></button><span id="lvMsg">Starting camera…</span><button class="pill" id="lvAuto">Auto: On</button></div>
   <div class="lvBot"><button id="lvThumb" class="lvth"><img id="lvImg" alt=""><span id="lvN"></span></button><button id="lvShut" class="shutter" aria-label="Capture"></button><button class="pill" id="lvDone">Done</button></div>
+</div>
+<div id="lib">
+  <div class="sh"><button class="tb" id="libBack"><span class="ic" data-i="back"></span></button><b>Library</b><span class="sp"></span></div>
+  <div style="padding:10px 12px 0"><input type="search" id="libSearch" placeholder="Search names and text…"></div>
+  <div class="chips" id="libChips"></div>
+  <div id="libFolderTools" style="display:none;gap:14px;padding:6px 14px 0"><button class="link" id="libRenameF">Rename folder</button><button class="link" style="color:var(--danger)" id="libDeleteF">Delete folder</button></div>
+  <div id="libGrid" style="flex:1;overflow:auto;padding:12px"></div>
+  <div class="sf" style="border-top:1px solid var(--line);align-items:center"><span class="small" id="libUse" style="flex:1"></span><button class="btn" id="libRestoreB">Restore</button><button class="btn" id="libBackup">Back up</button></div>
 </div>
 <div id="scan">
   <div class="sh"><button class="tb" id="scBack"><span class="ic" data-i="back"></span></button><b>Scanner</b><span class="sp"></span><span id="scCount" class="small" style="color:#9ca3af;padding-right:8px"></span></div>
@@ -255,6 +284,7 @@ input.fo{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:point
 <input type="file" id="fImg" accept="image/*" hidden>
 <input type="file" id="fCam" accept="image/*" capture="environment" hidden>
 <input type="file" id="fPic" accept="image/*" multiple hidden>
+<input type="file" id="fRestore" accept=".zip,application/zip" hidden>
 
 <script>
 /* ---- Watermark finder / remover (works on raw PDF content streams) ---- */
@@ -435,6 +465,7 @@ const IC={
  edittext:"M4 7V5h11v2M9.5 5v13M7 18h5M14 15l5-5 2.5 2.5-5 5H14z",
  wmark:"M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11zM3 3l18 18",
  rotpage:"M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5M9 9h6v6H9z",
+ books:"M4 4h4v16H4zM10 4h4v16h-4zM16 5l3.5-1 2.5 15-3.5 1z",
  bolt:"M13 2 4 14h7l-1 8 9-12h-7z"
 };
 const icon=n=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${IC[n]||''}"/></svg>`;
@@ -505,7 +536,7 @@ async function addSource(buf,name){
   }catch(e){}
   return src.pp.map((p,i)=>({id:uid++,src:src.id,idx:i,extra:0,base:p.rotate||0,annots:[]}));
 }
-function resetDoc(){S.sources=[];S.pages=[];S.undo=[];S.redo=[];S.imgs={};S.sel=null;imgEls.clear()}
+function resetDoc(){S.libId=null;S.libFolder=null;S.sources=[];S.pages=[];S.undo=[];S.redo=[];S.imgs={};S.sel=null;imgEls.clear()}
 async function openFiles(files,append){
   if(!files.length)return;
   busy('Opening…');await tick();
@@ -920,12 +951,22 @@ async function exportPdf(){
   }
   return out.save();
 }
-function openSave(){
+async function openSave(){
   if(!S.pages.length){toast('Open or scan a document first');return}
-  openModal(`<h3>Save PDF</h3><input type="text" id="svName" value="${esc(S.name)}"><p class="small">Your edits get written into a new PDF. The original file isn't changed.</p><div class="btns"><button class="btn" data-x>Cancel</button><button class="btn pri" id="svOk">Save PDF</button></div>`);
-  $('#svOk').onclick=async()=>{let n=$('#svName').value.trim()||'document.pdf';if(!/\.pdf$/i.test(n))n+='.pdf';S.name=n;closeModal();busy('Building PDF…');await tick();let bytes;
+  await libFolders();const last=S.libFolder||lsGet('folio.lastFolder.doc')||'Documents';const dl=lsGet('folio.dl.doc')!=='0';
+  openModal(`<h3>Save PDF</h3><input type="text" id="svName" value="${esc(S.name)}">
+   ${folderPickerHTML(LIB.folders.includes(last)?last:'Documents',true)}
+   ${S.libId?`<label class="row" style="gap:10px"><input type="checkbox" id="svRep" checked style="width:18px;height:18px;accent-color:var(--acc)"><span class="small">Replace the copy already in your Library</span></label>`:''}
+   <label class="row" style="gap:10px"><input type="checkbox" id="svDl" ${dl?'checked':''} style="width:18px;height:18px;accent-color:var(--acc)"><span>Also download to this phone</span></label>
+   <p class="small">Your edits get written into a new PDF. The original file isn't changed.</p><div class="btns"><button class="btn" data-x>Cancel</button><button class="btn pri" id="svOk">Save</button></div>`);
+  folderPickerWire();
+  $('#svOk').onclick=async()=>{let n=$('#svName').value.trim()||'document.pdf';if(!/\.pdf$/i.test(n))n+='.pdf';S.name=n;
+    const folder=folderPickerValue(),wantDl=$('#svDl').checked,rep=$('#svRep')&&$('#svRep').checked;
+    if(!folder&&!wantDl){toast('Choose a folder or tick download');return}
+    lsSet('folio.dl.doc',wantDl?'1':'0');if(folder)lsSet('folio.lastFolder.doc',folder);closeModal();busy('Building PDF…');await tick();let bytes;
     try{bytes=await exportPdf()}catch(err){console.error(err);unbusy();toast('Could not build the PDF: '+(err.message||err),5000);return}
-    unbusy();offerDownload(n,bytes)};
+    if(folder){busy('Saving to Library…');try{const id=await libSave(n,folder,bytes,rep?S.libId:null);S.libId=id;S.libFolder=folder;toast(`Saved to ${folder}`)}catch(e){console.error(e);toast('Could not save to Library: '+(e.message||e),4500)}}
+    unbusy();if(wantDl)offerDownload(n,bytes)};
 }
 
 /* ---------------- top bar ---------------- */
@@ -937,6 +978,7 @@ function menuAct(m){
   if(m==='blank')insertBlank();
   if(m==='form')openForm();
   if(m==='wm')openWm();
+  if(m==='lib')openLibrary();
   if(m==='ocr')ocrDocument();
   if(m==='alltext')showAllText();
   if(m==='scan')openScanner();
@@ -947,6 +989,7 @@ document.querySelectorAll('[data-m]').forEach(b=>b.addEventListener('click',ev=>
 $('#fOpen').onchange=e=>openFiles([...e.files],false);
 $('#fAdd').onchange=e=>openFiles([...e.files],S.pages.length>0);
 $('#bScan').onclick=()=>openScanner();
+$('#bLib').onclick=()=>openLibrary();
 $('#bSave').onclick=openSave;
 $('#bUndo').onclick=undo;$('#bRedo').onclick=redo;
 $('#zIn').onclick=()=>{S.scale=Math.min(5,S.scale*1.2);relayout(true)};
@@ -1199,7 +1242,7 @@ async function scansToPdf(){
   return d.save();
 }
 const scanName=()=>{const t=new Date();return`Scan ${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}.pdf`};
-$('#scSave').onclick=()=>openScanSave('save');
+$('#scSave').onclick=async()=>{await libFolders();openScanSave('save')};
 $('#scEdit').onclick=()=>openScanSave('edit');
 
 /* --- crop editor --- */
@@ -1568,12 +1611,14 @@ function openScanSave(mode){
   if(!SC.pages.length)return;let look='keep',ocr=lsGet('folio.ocr')!=='0';
   const m=openModal(`<h3>${mode==='edit'?'Open scan in editor':'Save scan as PDF'}</h3>
    ${mode==='save'?`<input type="text" id="ssName" value="${esc(scanName())}">`:''}
+   ${mode==='save'?folderPickerHTML(LIB.folders.includes(lsGet('folio.lastFolder.scan'))?lsGet('folio.lastFolder.scan'):'Receipts',true)+`<label class="row" style="gap:10px;margin:8px 0 0"><input type="checkbox" id="ssDl" ${lsGet('folio.dl.scan')==='1'?'checked':''} style="width:18px;height:18px;accent-color:var(--acc)"><span>Also download to this phone</span></label>`:''}
    <p class="small" style="margin:12px 0 6px">Look</p>
    <div class="chips" id="ssLook" style="padding:0;flex-wrap:wrap">${[['keep','As shown'],['auto','Colour'],['gray','Grayscale'],['bw','Black & white']].map(([k,l])=>`<button data-l="${k}" class="btn" style="height:36px">${l}</button>`).join('')}</div>
    <div style="margin-top:12px;background:#eef0f3;border-radius:12px;height:230px;display:grid;place-items:center;overflow:hidden"><img id="ssPrev" alt="Preview" style="max-width:100%;max-height:220px;box-shadow:0 2px 10px rgba(0,0,0,.2)"></div>
    <p class="small" style="margin:6px 0 0;text-align:center" id="ssPrevL"></p>
    <label class="row" style="gap:10px;align-items:flex-start;margin-top:16px"><input type="checkbox" id="ssOcr" ${ocr?'checked':''} style="margin-top:3px;width:18px;height:18px;accent-color:var(--acc)"><span><b>Make text readable &amp; editable</b><br><span class="small">Recognises the words so you can search, copy, select and edit them. Needs internet and takes a few seconds per page.</span></span></label>
    <div class="btns"><button class="btn" data-x>Cancel</button><button class="btn pri" id="ssGo">${mode==='edit'?'Open':'Save PDF'}</button></div>`);
+  folderPickerWire();
   const tg=()=>m.querySelectorAll('#ssLook button').forEach(b=>{const on=b.dataset.l===look;b.style.background=on?'var(--acc)':'#fff';b.style.color=on?'#fff':'';b.style.borderColor=on?'var(--acc)':''});tg();
   const pvc={};const showPv=()=>{const p=SC.pages[0];const img=$('#ssPrev');if(!img)return;$('#ssPrevL').textContent=`Preview of page 1${SC.pages.length>1?` of ${SC.pages.length}`:''}`;
     if(look==='keep'){img.src=p.out;return}
@@ -1583,10 +1628,13 @@ function openScanSave(mode){
   m.querySelectorAll('#ssLook button').forEach(b=>b.onclick=()=>{look=cur=b.dataset.l;tg();showPv()});showPv();
   $('#ssGo').onclick=async()=>{
     let name=mode==='save'?($('#ssName').value.trim()||scanName()):scanName();if(!/\.pdf$/i.test(name))name+='.pdf';
+    const folder=mode==='save'?folderPickerValue():'',wantDl=mode==='save'&&$('#ssDl').checked;
+    if(mode==='save'&&!folder&&!wantDl){toast('Choose a folder or tick download');return}
+    if(mode==='save'){lsSet('folio.dl.scan',wantDl?'1':'0');if(folder)lsSet('folio.lastFolder.scan',folder)}
     ocr=$('#ssOcr').checked;lsSet('folio.ocr',ocr?'1':'0');closeModal();
     let bytes;try{bytes=await buildScanPdf(look,ocr)}catch(e){console.error(e);unbusy();toast('Could not build the PDF: '+(e.message||e),4500);return}
     unbusy();
-    if(mode==='save')offerDownload(name,bytes);
+    if(mode==='save'){if(folder){busy('Saving to Library…');try{await libSave(name,folder,bytes);toast(`Saved to ${folder}`)}catch(e){console.error(e);toast('Could not save to Library: '+(e.message||e),4500)}unbusy()}if(wantDl)offerDownload(name,bytes)}
     else{busy('Opening in editor…');try{const append=S.pages.length>0;await addBytesAsDoc(bytes,name,append);SC.pages=[];renderScan();$('#scan').classList.remove('on');toast(append?'Scanned pages added to your document':ocr?'Scan opened. Use Edit text to change any words.':'Scan opened in the editor',4000)}catch(e){console.error(e);toast('Could not open the scan')}unbusy()}
   };
 }
@@ -1629,6 +1677,132 @@ const zoomMov=makeMovable($('#zoom'),'zoom');setTimeout(zoomMov.restore,50);
 const selMov=makeMovable($('#selbar'),'selbar');
 const _rsb=renderSelbar;renderSelbar=function(){_rsb();const b=$('#selbar');if(b.classList.contains('on')){b.prepend(selMov.grip);requestAnimationFrame(selMov.restore)}};
 
+/* ================= LIBRARY (folders saved on this device) ================= */
+const LIB={p:null,docs:[],folders:['Receipts','Documents'],folder:'',q:''};
+function libDB(){if(LIB.p)return LIB.p;LIB.p=new Promise((res,rej)=>{const r=indexedDB.open('folio-library',1);r.onupgradeneeded=()=>{const db=r.result;if(!db.objectStoreNames.contains('docs'))db.createObjectStore('docs',{keyPath:'id'});if(!db.objectStoreNames.contains('meta'))db.createObjectStore('meta')};r.onsuccess=()=>res(r.result);r.onerror=()=>{LIB.p=null;rej(r.error)}});return LIB.p}
+async function ltx(store,mode,fn){const db=await libDB();return new Promise((res,rej)=>{const t=db.transaction(store,mode),st=t.objectStore(store);let out;const r=fn(st);if(r)r.onsuccess=()=>{out=r.result};t.oncomplete=()=>res(out);t.onerror=t.onabort=()=>rej(t.error||new Error('storage'))})}
+const libAll=()=>ltx('docs','readonly',s=>s.getAll());
+const libGet=id=>ltx('docs','readonly',s=>s.get(id));
+const libPut=d=>ltx('docs','readwrite',s=>s.put(d));
+const libDel=id=>ltx('docs','readwrite',s=>s.delete(id));
+async function libFolders(){try{const f=await ltx('meta','readonly',s=>s.get('folders'));if(Array.isArray(f)&&f.length)LIB.folders=f}catch(e){}return LIB.folders}
+async function libSetFolders(f){LIB.folders=[...new Set(f.filter(Boolean))];await ltx('meta','readwrite',s=>s.put(LIB.folders,'folders'))}
+async function pdfInfo(bytes){
+  const pdf=await pdfjsLib.getDocument({data:bytes.slice(),isEvalSupported:false}).promise;let text='',thumb='';
+  try{for(let i=1;i<=Math.min(pdf.numPages,60)&&text.length<60000;i++){const pg=await pdf.getPage(i);const tc=await pg.getTextContent();text+=tc.items.map(t=>t.str).join(' ')+'\n'}}catch(e){}
+  try{const p1=await pdf.getPage(1),v1=p1.getViewport({scale:1}),vp=p1.getViewport({scale:300/Math.max(v1.width,v1.height)});const c=document.createElement('canvas');c.width=vp.width;c.height=vp.height;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);await p1.render({canvasContext:x,viewport:vp}).promise;thumb=c.toDataURL('image/jpeg',.7)}catch(e){}
+  const pages=pdf.numPages;try{pdf.destroy()}catch(e){}
+  return{pages,thumb,text:text.replace(/\s+/g,' ').trim()};
+}
+async function libSave(name,folder,bytes,id){
+  const b=bytes instanceof Uint8Array?bytes:new Uint8Array(bytes);const info=await pdfInfo(b);const now=Date.now();
+  const old=id?await libGet(id):null;
+  const doc={id:old?old.id:'d'+now.toString(36)+Math.random().toString(36).slice(2,7),name:name.replace(/\.pdf$/i,''),folder,created:old?old.created:now,updated:now,size:b.length,pages:info.pages,thumb:info.thumb,text:info.text,blob:new Blob([b],{type:'application/pdf'})};
+  await libPut(doc);if(!LIB.folders.includes(folder))await libSetFolders([...LIB.folders,folder]);
+  try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
+  return doc.id;
+}
+/* folder picker used in the save screens */
+function folderPickerHTML(sel,allowNone){
+  return `<p class="small" style="margin:14px 0 6px">Save to Library</p>
+   <select id="fpSel" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;font:inherit">
+    ${LIB.folders.map(f=>`<option ${f===sel?'selected':''}>${esc(f)}</option>`).join('')}<option value="__new">+ New folder…</option>${allowNone?`<option value="" ${sel===''?'selected':''}>Don't save to Library</option>`:''}</select>
+   <input type="text" id="fpNew" placeholder="New folder name" style="display:none;margin-top:8px">`;
+}
+function folderPickerWire(){const s=$('#fpSel'),n=$('#fpNew');if(!s)return;s.onchange=()=>{n.style.display=s.value==='__new'?'block':'none';if(s.value==='__new')n.focus()}}
+function folderPickerValue(){const s=$('#fpSel');if(!s)return '';if(s.value==='__new')return($('#fpNew').value.trim()||'New folder').slice(0,40);return s.value}
+/* zip (stored, no compression) for backups */
+const CRC=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+function crc32(b){let c=0xFFFFFFFF;for(let i=0;i<b.length;i++)c=CRC[(c^b[i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0}
+function makeZip(files){
+  const enc=new TextEncoder(),parts=[],cen=[];let off=0;
+  for(const f of files){const nm=enc.encode(f.name),crc=crc32(f.data),h=new DataView(new ArrayBuffer(30));
+    h.setUint32(0,0x04034b50,true);h.setUint16(4,20,true);h.setUint16(6,0x0800,true);h.setUint16(8,0,true);h.setUint32(14,crc,true);h.setUint32(18,f.data.length,true);h.setUint32(22,f.data.length,true);h.setUint16(26,nm.length,true);
+    parts.push(new Uint8Array(h.buffer),nm,f.data);
+    const c=new DataView(new ArrayBuffer(46));c.setUint32(0,0x02014b50,true);c.setUint16(4,20,true);c.setUint16(6,20,true);c.setUint16(8,0x0800,true);c.setUint32(16,crc,true);c.setUint32(20,f.data.length,true);c.setUint32(24,f.data.length,true);c.setUint16(28,nm.length,true);c.setUint32(42,off,true);
+    cen.push(new Uint8Array(c.buffer),nm);off+=30+nm.length+f.data.length}
+  const cs=cen.reduce((a,b)=>a+b.length,0),e=new DataView(new ArrayBuffer(22));e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,cs,true);e.setUint32(16,off,true);
+  const all=[...parts,...cen,new Uint8Array(e.buffer)],out=new Uint8Array(all.reduce((a,b)=>a+b.length,0));let p=0;for(const a of all){out.set(a,p);p+=a.length}return out;
+}
+async function readZip(buf){
+  const b=new Uint8Array(buf),dv=new DataView(b.buffer,b.byteOffset,b.byteLength),dec=new TextDecoder();let e=-1;
+  for(let i=b.length-22;i>=Math.max(0,b.length-70000);i--)if(dv.getUint32(i,true)===0x06054b50){e=i;break}
+  if(e<0)throw new Error('Not a zip file');const n=dv.getUint16(e+10,true);let p=dv.getUint32(e+16,true);const out={};
+  for(let k=0;k<n;k++){const method=dv.getUint16(p+10,true),csz=dv.getUint32(p+20,true),nl=dv.getUint16(p+28,true),xl=dv.getUint16(p+30,true),cl=dv.getUint16(p+32,true),lo=dv.getUint32(p+42,true);
+    const name=dec.decode(b.subarray(p+46,p+46+nl));const ds=lo+30+dv.getUint16(lo+26,true)+dv.getUint16(lo+28,true);let data=b.subarray(ds,ds+csz);
+    if(method===8){const s=new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));data=new Uint8Array(await new Response(s).arrayBuffer())}
+    out[name]=data;p+=46+nl+xl+cl}
+  return out;
+}
+async function libBackup(){
+  busy('Packing your library…');
+  try{const docs=await libAll();if(!docs.length){unbusy();toast('Your library is empty');return}
+    const files=[],used=new Set(),man={app:'Folio',version:1,saved:new Date().toISOString(),folders:LIB.folders,docs:[]};
+    for(const d of docs){let base=(d.folder||'Documents')+'/'+(d.name||'document').replace(/[\\/:*?"<>|]/g,'_'),fn=base+'.pdf',k=2;while(used.has(fn))fn=base+` (${k++}).pdf`;used.add(fn);
+      files.push({name:fn,data:new Uint8Array(await d.blob.arrayBuffer())});const{blob,...meta}=d;man.docs.push({...meta,file:fn})}
+    files.unshift({name:'folio-library.json',data:new TextEncoder().encode(JSON.stringify(man))});
+    const z=makeZip(files);unbusy();const t=new Date();
+    offerDownload(`Folio backup ${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}.zip`,z,'application/zip');
+  }catch(e){console.error(e);unbusy();toast('Backup failed: '+(e.message||e),4500)}
+}
+async function libRestore(file){
+  busy('Restoring…');
+  try{const z=await readZip(await file.arrayBuffer());const mj=z['folio-library.json'];let added=0;
+    if(mj){const man=JSON.parse(new TextDecoder().decode(mj));const have=new Set((await libAll()).map(d=>d.id));
+      for(const m of man.docs||[]){const data=z[m.file];if(!data||have.has(m.id))continue;const{file:_f,...meta}=m;await libPut({...meta,blob:new Blob([data],{type:'application/pdf'})});added++}
+      await libSetFolders([...LIB.folders,...(man.folders||[])]);}
+    else{for(const[n,data]of Object.entries(z)){if(!/\.pdf$/i.test(n))continue;const parts=n.split('/');const folder=parts.length>1?parts[parts.length-2]:'Documents';await libSave(parts[parts.length-1],folder,data);added++}}
+    unbusy();toast(added?`Restored ${added} document${added>1?'s':''}`:'Nothing new to restore. Everything in that backup is already here.',4000);renderLib();
+  }catch(e){console.error(e);unbusy();toast('Could not restore: '+(e.message||e),4500)}
+}
+/* library screen */
+async function openLibrary(){closeDrawers();$('#lib').classList.add('on');await libFolders();renderLib()}
+$('#libBack').onclick=()=>$('#lib').classList.remove('on');
+$('#libSearch').oninput=e=>{LIB.q=e.target.value;renderLibGrid()};
+async function renderLib(){
+  try{LIB.docs=await libAll()}catch(e){LIB.docs=[];$('#libGrid').innerHTML='<p class="small">Storage isn’t available in this browser.</p>';return}
+  await libFolders();if(LIB.folder&&!LIB.folders.includes(LIB.folder))LIB.folder='';
+  const cnt=f=>LIB.docs.filter(d=>d.folder===f).length;
+  $('#libChips').innerHTML=`<button data-f="" class="${LIB.folder===''?'on':''}">All · ${LIB.docs.length}</button>`+LIB.folders.map(f=>`<button data-f="${esc(f)}" class="${LIB.folder===f?'on':''}">${esc(f)} · ${cnt(f)}</button>`).join('')+`<button data-new="1">＋ New folder</button>`;
+  $('#libFolderTools').style.display=LIB.folder?'flex':'none';
+  renderLibGrid();
+  try{const e=await navigator.storage.estimate();$('#libUse').textContent=`${(LIB.docs.reduce((a,d)=>a+(d.size||0),0)/1048576).toFixed(1)} MB in your library`}catch(e){}
+}
+function renderLibGrid(){
+  const q=LIB.q.trim().toLowerCase();let list=LIB.docs.filter(d=>!LIB.folder||d.folder===LIB.folder);
+  if(q)list=list.filter(d=>(d.name+' '+d.folder+' '+(d.text||'')).toLowerCase().includes(q));
+  list.sort((a,b)=>b.updated-a.updated);
+  const G=$('#libGrid');
+  if(!list.length){G.innerHTML=`<div class="sempty" style="color:var(--ink)"><div class="ic" style="background:var(--acc2);color:var(--acc)">${icon('folder')}</div><h2>${q?'No matches':'Nothing here yet'}</h2><p style="color:var(--muted)">${q?'Try a different word. Search looks inside scanned text too.':'When you save a PDF or a scan, choose a folder and it will appear here.'}</p></div>`;return}
+  const dt=t=>new Date(t).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'});
+  G.innerHTML=`<div class="lgrid">${list.map(d=>`<div class="lcard" data-id="${d.id}"><div class="lth">${d.thumb?`<img src="${d.thumb}" alt="">`:icon('filePlus')}</div><b>${esc(d.name)}</b><span>${esc(d.folder)} · ${d.pages} page${d.pages>1?'s':''}</span><span>${dt(d.updated)}</span></div>`).join('')}</div>`;
+}
+$('#libChips').addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.new){openModal(`<h3>New folder</h3><input type="text" id="nfName" placeholder="e.g. Business 2026"><div class="btns"><button class="btn" data-x>Cancel</button><button class="btn pri" id="nfOk">Create</button></div>`);setTimeout(()=>$('#nfName').focus(),50);
+    $('#nfOk').onclick=async()=>{const n=$('#nfName').value.trim().slice(0,40);if(!n)return;closeModal();await libSetFolders([...LIB.folders,n]);LIB.folder=n;renderLib()};return}
+  LIB.folder=b.dataset.f;renderLib()});
+$('#libRenameF').onclick=()=>{const old=LIB.folder;if(!old)return;openModal(`<h3>Rename folder</h3><input type="text" id="rfName" value="${esc(old)}"><div class="btns"><button class="btn" data-x>Cancel</button><button class="btn pri" id="rfOk">Rename</button></div>`);
+  $('#rfOk').onclick=async()=>{const n=$('#rfName').value.trim().slice(0,40);if(!n||n===old){closeModal();return}closeModal();busy('Renaming…');for(const d of LIB.docs.filter(d=>d.folder===old)){d.folder=n;await libPut(d)}await libSetFolders(LIB.folders.map(f=>f===old?n:f));LIB.folder=n;unbusy();renderLib()}};
+$('#libDeleteF').onclick=()=>{const f=LIB.folder;if(!f)return;const n=LIB.docs.filter(d=>d.folder===f).length;
+  openModal(`<h3>Delete folder “${esc(f)}”?</h3><p class="small">${n?`Its ${n} document${n>1?'s':''} will be moved to <b>Documents</b>, not deleted.`:'The folder is empty.'}</p><div class="btns"><button class="btn" data-x>Cancel</button><button class="btn red" id="dfOk">Delete folder</button></div>`);
+  $('#dfOk').onclick=async()=>{closeModal();for(const d of LIB.docs.filter(d=>d.folder===f)){d.folder='Documents';await libPut(d)}await libSetFolders([...LIB.folders.filter(x=>x!==f),'Documents']);LIB.folder='';renderLib()}};
+$('#libGrid').addEventListener('click',e=>{const c=e.target.closest('.lcard');if(c)libItemMenu(c.dataset.id)});
+async function libItemMenu(id){
+  const d=LIB.docs.find(x=>x.id===id);if(!d)return;
+  const m=openModal(`<div style="display:flex;gap:12px;align-items:center;margin-bottom:12px">${d.thumb?`<img src="${d.thumb}" style="width:56px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.2)">`:''}<div><h3 style="margin:0">${esc(d.name)}</h3><span class="small">${esc(d.folder)} · ${d.pages} page${d.pages>1?'s':''} · ${(d.size/1048576).toFixed(1)} MB</span></div></div>
+   <div class="lacts"><button class="btn pri" id="liOpen">${icon('pen')}Open &amp; edit</button><button class="btn" id="liDl">${icon('download')}Download</button><button class="btn" id="liRen">${icon('edit')}Rename</button><button class="btn" id="liMove">${icon('folder')}Move</button><button class="btn red" id="liDel">${icon('trash')}Delete</button></div>
+   <div id="liExtra"></div><div class="btns"><button class="btn" data-x>Close</button></div>`);
+  $('#liOpen').onclick=async()=>{closeModal();busy('Opening…');try{resetDoc();const np=await addSource(await d.blob.arrayBuffer(),d.name+'.pdf');S.pages=np;S.name=d.name+'.pdf';S.libId=d.id;S.libFolder=d.folder;fitWidth(false);relayout(false);$('#lib').classList.remove('on')}catch(e){console.error(e);toast('Could not open it')}unbusy()};
+  $('#liDl').onclick=async()=>{closeModal();offerDownload(d.name+'.pdf',new Uint8Array(await d.blob.arrayBuffer()))};
+  $('#liRen').onclick=()=>{$('#liExtra').innerHTML=`<div class="row"><input type="text" id="liName" value="${esc(d.name)}"><button class="btn pri" id="liRenOk">Save</button></div>`;$('#liName').focus();
+    $('#liRenOk').onclick=async()=>{const n=$('#liName').value.trim();if(!n)return;d.name=n;await libPut(d);closeModal();renderLib()}};
+  $('#liMove').onclick=()=>{$('#liExtra').innerHTML=`<div class="row"><select id="liF" style="flex:1;padding:10px;border:1px solid var(--line);border-radius:10px;font:inherit">${LIB.folders.map(f=>`<option ${f===d.folder?'selected':''}>${esc(f)}</option>`).join('')}</select><button class="btn pri" id="liMoveOk">Move</button></div>`;
+    $('#liMoveOk').onclick=async()=>{d.folder=$('#liF').value;await libPut(d);closeModal();renderLib()}};
+  let armed=false;$('#liDel').onclick=async()=>{if(!armed){armed=true;$('#liDel').innerHTML=icon('trash')+'Tap again to delete';return}await libDel(d.id);if(S.libId===d.id)S.libId=null;closeModal();toast('Deleted');renderLib()};
+}
+$('#libBackup').onclick=libBackup;
+$('#fRestore').onchange=e=>{const f=e.files&&e.files[0];if(f)libRestore(f)};
+
 /* ---------------- file pickers: real inputs laid over the buttons, so a direct tap opens them ---------------- */
 function overlayInput(el,srcId){
   if(!el||el.querySelector(':scope > input.fo'))return;
@@ -1644,6 +1818,7 @@ function attachPickers(){
   document.querySelectorAll('[data-m="add"]').forEach(b=>overlayInput(b,'fAdd'));
   overlayInput($('#scCam'),'fCam');overlayInput($('#scPic'),'fPic');
   overlayInput($('#tools [data-t="image"]'),'fImg');
+  overlayInput($('#libRestoreB'),'fRestore');
 }
 const _rt=renderTools;renderTools=function(){_rt();attachPickers()};
 
