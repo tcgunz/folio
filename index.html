@@ -250,7 +250,7 @@ table.xs tfoot td{font-weight:700;padding:10px 8px;background:#f9fafb}
     <button data-m="lib"><span class="ic" data-i="books"></span>Library</button>
     <hr>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 26</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 27</div>
   </div>
 </div>
 
@@ -1882,6 +1882,32 @@ async function libItemMenu(id){
 $('#libBackup').onclick=libBackup;
 $('#fRestore').onchange=e=>{const f=e.files&&e.files[0];if(f)libRestore(f)};
 
+/* well-known Canadian stores → name + usual category */
+const BRANDS=[
+ ['Esso',/\besso\b/i,'Vehicle & fuel'],['Shell',/\bshell\b/i,'Vehicle & fuel'],['Petro-Canada',/petro[\s-]*can/i,'Vehicle & fuel'],['Circle K',/circle\s*k\b/i,'Vehicle & fuel'],
+ ['Pioneer',/\bpioneer\b/i,'Vehicle & fuel'],['Ultramar',/ultramar/i,'Vehicle & fuel'],['Husky',/\bhusky\b/i,'Vehicle & fuel'],['Mobil',/\bmobil\b/i,'Vehicle & fuel'],['Chevron',/chevron/i,'Vehicle & fuel'],
+ ['Irving',/\birving\b/i,'Vehicle & fuel'],['Costco Gas',/costco\s*gas/i,'Vehicle & fuel'],['Canadian Tire Gas+',/gas\s*\+|gas\s*bar/i,'Vehicle & fuel'],['407 ETR',/407\s*etr/i,'Vehicle & fuel'],
+ ['Canadian Tire',/canadian\s*tire/i,'Equipment'],['Home Depot',/home\s*depot/i,'Equipment'],['RONA',/\brona\b/i,'Equipment'],["Lowe's",/\blowe'?s\b/i,'Equipment'],
+ ['Staples',/\bstaples\b/i,'Office supplies'],['Best Buy',/best\s*buy/i,'Equipment'],['Amazon',/amazon/i,'Office supplies'],['Dollarama',/dollarama/i,'Office supplies'],
+ ['Bell',/\bbell\s*(canada|mobility)?\b/i,'Phone & internet'],['Rogers',/\brogers\b/i,'Phone & internet'],['Telus',/\btelus\b/i,'Phone & internet'],['Fido',/\bfido\b/i,'Phone & internet'],['Koodo',/koodo/i,'Phone & internet'],['Freedom Mobile',/freedom\s*mobile/i,'Phone & internet'],
+ ['Hydro One',/hydro\s*one/i,'Utilities'],['Enbridge',/enbridge/i,'Utilities'],['Alectra',/alectra/i,'Utilities'],['Toronto Hydro',/toronto\s*hydro/i,'Utilities'],
+ ['Tim Hortons',/tim\s*horton/i,'Meals & entertainment'],['Starbucks',/starbucks/i,'Meals & entertainment'],["McDonald's",/mc\s*donald/i,'Meals & entertainment'],['Subway',/\bsubway\b/i,'Meals & entertainment'],
+ ['A&W',/\ba\s*&\s*w\b/i,'Meals & entertainment'],["Wendy's",/wendy'?s/i,'Meals & entertainment'],["Harvey's",/harvey'?s/i,'Meals & entertainment'],['Swiss Chalet',/swiss\s*chalet/i,'Meals & entertainment'],
+ ['Boston Pizza',/boston\s*pizza/i,'Meals & entertainment'],['Pizza Pizza',/pizza\s*pizza/i,'Meals & entertainment'],["Domino's",/domino'?s/i,'Meals & entertainment'],['The Keg',/\bthe\s*keg\b/i,'Meals & entertainment'],
+ ["Kelsey's",/kelsey'?s/i,'Meals & entertainment'],['KFC',/\bkfc\b/i,'Meals & entertainment'],['Popeyes',/popeyes/i,'Meals & entertainment'],['Second Cup',/second\s*cup/i,'Meals & entertainment'],['Uber Eats',/uber\s*eats/i,'Meals & entertainment'],
+ ['Uber',/\buber\b/i,'Travel'],['Lyft',/\blyft\b/i,'Travel'],['Presto',/\bpresto\b/i,'Travel'],['Air Canada',/air\s*canada/i,'Travel'],['WestJet',/westjet/i,'Travel'],['Via Rail',/via\s*rail/i,'Travel'],
+ ['LCBO',/\blcbo\b/i,'Gifts'],['The Beer Store',/beer\s*store/i,'Gifts'],['Indigo',/\bindigo\b/i,'Gifts'],
+ ['Costco',/\bcostco\b/i,'Groceries'],['Walmart',/wal[\s-]*mart/i,'Groceries'],['Loblaws',/loblaw/i,'Groceries'],['No Frills',/no\s*frills/i,'Groceries'],['Metro',/\bmetro\b/i,'Groceries'],['Sobeys',/sobeys/i,'Groceries'],
+ ['FreshCo',/freshco/i,'Groceries'],['Food Basics',/food\s*basics/i,'Groceries'],['Real Canadian Superstore',/superstore/i,'Groceries'],['Zehrs',/zehrs/i,'Groceries'],['Fortinos',/fortinos/i,'Groceries'],
+ ["Longo's",/longo'?s/i,'Groceries'],['Farm Boy',/farm\s*boy/i,'Groceries'],['T&T',/\bt\s*&\s*t\b/i,'Groceries'],['Whole Foods',/whole\s*foods/i,'Groceries'],['Giant Tiger',/giant\s*tiger/i,'Groceries'],
+ ['Shoppers Drug Mart',/shoppers/i,'Medical'],['Rexall',/rexall/i,'Medical'],['IKEA',/\bikea\b/i,'Equipment'],['Winners',/\bwinners\b/i,'Other'],['HomeSense',/homesense/i,'Other'],['Sport Chek',/sport\s*chek/i,'Other']];
+function guessCategory(text){
+  if(/\bpump\b|litre|\d\s*l\s*(@|at)\b|\/\s*l\b|\bfuel\b|diesel|unleaded|\bregular\b.*\$|gasoline|\bsupr?\b/i.test(text))return 'Vehicle & fuel';
+  if(/dine[\s-]*in|take[\s-]*out|\bserver\b|\btable\b|gratuity|\btip\b|\bguests?\b/i.test(text))return 'Meals & entertainment';
+  if(/parking|impark|green\s*p\b|\btaxi\b|hotel|airbnb/i.test(text))return 'Travel';
+  return '';
+}
+
 /* ---- receipt reader: finds store, date, total, tax and payment in recognised text ---- */
 const MONTHS={jan:1,janv:1,feb:2,fev:2,fév:2,mar:3,apr:4,avr:4,may:5,mai:5,jun:6,juin:6,jul:7,juil:7,aug:8,aou:8,aoû:8,sep:9,sept:9,oct:10,nov:11,dec:12,déc:12};
 function rcAmounts(line){const out=[];const re=/(?:^|[^\d.,])\$?\s?(\d{1,3}(?:[,\s]\d{3})+|\d+)[.,](\d{2})(?!\d)/g;let m;while((m=re.exec(line)))out.push(parseFloat(m[1].replace(/[,\s]/g,'')+'.'+m[2]));
@@ -1905,8 +1931,10 @@ function readReceipt(text){
   // vendor: first "name-like" line near the top, or a known web address
   const skip=/receipt|invoice|welcome|thank|merci|date|time|tel|phone|fax|www|http|address|cashier|store\s*#|^#|order|table|server|copy|copie|questions|drive|street|\bst\b|\bave\b|\brd\b|suite|unit|building|dine[\s-]*in|take[\s-]*out|to[\s-]*go|pick[\s-]*up|delivery|guest|check\s*#|chk|seat|cover|terminal|merchant|transaction|visit\s*us|survey|reprint|duplicate|customer|sale|refund|^\W*$/i;
   const web=(text.match(/\b(?:www\.)?([a-z0-9-]{2,30})\.(?:com|ca|net|org)\b/i)||[])[1];
-  for(const l of lines.slice(0,8)){const letters=(l.match(/[A-Za-zÀ-ÿ]/g)||[]).length;const c=l.replace(/\s*(#|no\.?|store)\s*\d+.*$/i,'').replace(/\s{2,}/g,' ').trim();if(letters>=3&&letters/l.length>.55&&c.length>=2&&c.length<=40&&!skip.test(c)){r.vendor=c;break}}
-  if(web&&(!r.vendor||web.toLowerCase().includes(r.vendor.toLowerCase().replace(/[^a-z]/g,'').slice(0,4))))r.vendor=r.vendor||web.toUpperCase();
+  let brand=null,bi=1e9;for(const[n,re,c]of BRANDS){const m=re.exec(text);if(m&&m.index<bi){bi=m.index;brand=[n,c]}}
+  if(brand){r.vendor=brand[0];r.category=brand[1]}
+  if(!r.vendor)for(const l of lines.slice(0,8)){const letters=(l.match(/[A-Za-zÀ-ÿ]/g)||[]).length;const c=l.replace(/\s*(#|no\.?|store)\s*\d+.*$/i,'').replace(/\s{2,}/g,' ').trim();if(letters>=4&&letters/l.length>.6&&/[A-Za-zÀ-ÿ]{3,}/.test(c)&&/[aeiouyAEIOUY]/.test(c)&&c.length<=40&&!skip.test(c)){r.vendor=c;break}}
+  if(!brand&&web&&(!r.vendor||web.toLowerCase().includes(r.vendor.toLowerCase().replace(/[^a-z]/g,'').slice(0,4))))r.vendor=r.vendor||web.toUpperCase();
   if(!r.vendor&&web)r.vendor=web.toUpperCase();
   r.date=rcDate(lines.join('\n'));
   // total: a TOTAL / AMOUNT DUE line (not subtotal), else the largest amount
@@ -1915,12 +1943,14 @@ function readReceipt(text){
     if(/\b(grand\s*total|total|amount\s*due|balance\s*due|montant|à payer|a payer|total\s*due)\b/i.test(l)){let a=rcAmounts(l);if(!a.length&&lines[i+1])a=rcAmounts(lines[i+1]);if(a.length){const v=a[a.length-1];if(total===null||v>=total)total=v}}}
   if(total===null){const all=lines.flatMap(rcAmounts).filter(v=>v<100000);if(all.length)total=Math.max(...all)}
   if(total!==null)r.total=total.toFixed(2);
-  let tax=0,found=false;for(const l of lines){if(/\b(hst|gst|pst|qst|tps|tvq|tvh|sales\s*tax|tax)\b/i.test(l)&&!/before|excl|incl|tax\s*total|no\s*tax|tax\s*exempt|tax\s*id|reg/i.test(l)){const a=rcAmounts(l);if(a.length){const v=a[a.length-1];if(!total||v<total){tax+=v;found=true}}}}
+  let tax=0,found=false;for(const l of lines){if(/\b(hst|gst|pst|qst|tps|tvq|tvh|sales\s*tax|tax)\b/i.test(l)&&!/before|excl|tax\s*total|no\s*tax|tax\s*exempt|tax\s*id|\breg(istration)?\b|#/i.test(l.replace(/\$/g,''))){const a=rcAmounts(l);if(a.length){const v=a[a.length-1];if(!total||v<total){tax+=v;found=true}}}}
   if(found)r.tax=tax.toFixed(2);
-  const PAY=[['Visa',/\bvisa\b/i],['Mastercard',/master\s*card|\bmc\b/i],['Amex',/amex|american express/i],['Debit',/interac|\bdebit\b|débit/i],['Apple Pay',/apple\s*pay/i],['Google Pay',/google\s*pay/i],['Cash',/\bcash\b|comptant/i]];
+  const PAY=[['Visa',/\bv[i1l!|]sa\b/i],['Mastercard',/master\s*c[a@]rd|\bmc\b/i],['Amex',/amex|american express/i],['Debit',/interac|\bdebit\b|débit/i],['Apple Pay',/apple\s*pay/i],['Google Pay',/google\s*pay/i],['Cash',/\bcash\b|comptant/i]];
   for(const[n,re]of PAY)if(re.test(text)){r.payment=n;break}
+  if(!r.category)r.category=guessCategory(text);
   return r;
 }
+
 /* ---------------- receipt details + spreadsheet export ---------------- */
 const CATS=['Meals & entertainment','Office supplies','Travel','Vehicle & fuel','Phone & internet','Utilities','Rent','Professional fees','Advertising','Software & subscriptions','Gifts','Medical','Groceries','Home office','Equipment','Other'];
 const isReceiptFolder=f=>/receipt|expense|reçu/i.test(f||'');
@@ -1971,7 +2001,7 @@ async function ocrDocText(d,onProg){
 }
 function openReceiptDetails(d,isNew){
   const auto=d.receipt?null:readReceipt(d.text||'');const r=Object.assign({vendor:'',date:'',total:'',tax:'',payment:'',category:'',note:''},auto||{},d.receipt||{});
-  if(!r.category)r.category=vcatGet(r.vendor);
+  {const mem=vcatGet(r.vendor);if(mem&&!(d.receipt&&d.receipt.category))r.category=mem}
   const noText=!d.text||d.text.length<8;const cats=[...new Set([...CATS,r.category].filter(Boolean))];
   const inp=(id,lab,val,type='text',extra='')=>`<div class="fld"><label>${lab}</label><input type="${type}" id="${id}" value="${esc(val||'')}" ${extra}></div>`;
   openModal(`<h3>${isNew?'Check the receipt details':'Receipt details'}</h3>
@@ -1979,22 +2009,24 @@ function openReceiptDetails(d,isNew){
    <p class="small" id="rcStatus" style="margin-top:-6px;display:none"></p>
    <button class="btn" id="rcView" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:12px">${icon('image')} View receipt</button>
    ${inp('rcV','Store',r.vendor)}
-   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${inp('rcD','Date',r.date,'date')}${inp('rcT','Total ($)',r.total,'text','inputmode="decimal"')}${inp('rcX','Tax ($)',r.tax,'text','inputmode="decimal"')}
+   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div>${inp('rcD','Date',r.date,'date')}<p class="small" id="rcDw" style="display:none;color:#d97706;margin:-6px 0 8px">Check the year: it looks unusual.</p></div>${inp('rcT','Total ($)',r.total,'text','inputmode="decimal"')}${inp('rcX','Tax ($)',r.tax,'text','inputmode="decimal"')}
    <div class="fld"><label>Paid with</label><select id="rcP">${['','Visa','Mastercard','Amex','Debit','Cash','Apple Pay','Google Pay','Gift card','Cheque','E-transfer','Other'].map(p=>`<option ${p===r.payment?'selected':''}>${p}</option>`).join('')}</select></div></div>
    <div class="fld"><label>Category</label><select id="rcC"><option value=""></option>${cats.map(c=>`<option ${c===r.category?'selected':''}>${esc(c)}</option>`).join('')}</select></div>
    ${inp('rcN','Description (what it was for)',r.note)}
    <div class="btns"><button class="btn l" id="rcRead">${icon('wand')} Read receipt</button><button class="btn" data-x>${isNew?'Skip':'Cancel'}</button><button class="btn pri" id="rcOk">Save details</button></div>`);
   const setF=(id,v,force)=>{const el=$('#'+id);if(el&&v&&(force||!el.value))el.value=v};
   const fill=(rr,force)=>{setF('rcV',rr.vendor,force);setF('rcD',rr.date,force);setF('rcT',rr.total,force);setF('rcX',rr.tax,force);
-    if(rr.payment&&(force||!$('#rcP').value))$('#rcP').value=rr.payment;const c=vcatGet($('#rcV').value);if(c&&!$('#rcC').value){const s=$('#rcC');if(![...s.options].some(o=>o.value===c))s.add(new Option(c,c));s.value=c}};
+    if(rr.payment&&(force||!$('#rcP').value))$('#rcP').value=rr.payment;const c=vcatGet($('#rcV').value)||rr.category;if(c&&!$('#rcC').value){const s=$('#rcC');if(![...s.options].some(o=>o.value===c))s.add(new Option(c,c));s.value=c}};
   const status=(t,red)=>{const el=$('#rcStatus');if(!el)return;el.style.display=t?'block':'none';el.style.color=red?'var(--danger)':'var(--acc)';el.textContent=t};
   const readNow=async force=>{const btn=$('#rcRead');if(btn)btn.disabled=true;status('Reading the receipt… this takes a few seconds');
     try{const t=await ocrDocText(d,pr=>status(`Reading the receipt… ${Math.round(pr*100)}%`));if(!$('#rcOk'))return;
-      if(t&&t.length>4){d.text=t;libPut(d).catch(()=>{});const rr=readReceipt(t);fill(rr,force);const got=['vendor','date','total'].filter(k=>rr[k]).length;
+      if(t&&t.length>4){d.text=t;libPut(d).catch(()=>{});const rr=readReceipt(t);fill(rr,force);dateCheck();const got=['vendor','date','total'].filter(k=>rr[k]).length;
         status(got?`Filled in what Folio could read${got<3?' (some fields need you)':''}. Check before saving.`:'Couldn’t find the details on this receipt. Please fill them in.',!got)}
       else status('Couldn’t read any words. The photo may be too blurry or faint. Please fill these in.',true)}
     catch(e){console.error(e);if($('#rcOk'))status("The receipt reader couldn't load. Check your internet connection, or fill these in.",true)}
     const b2=$('#rcRead');if(b2)b2.disabled=false};
+  const dateCheck=()=>{const v=$('#rcD')&&$('#rcD').value,w=$('#rcDw');if(!w)return;if(!v){w.style.display='none';return}const t=new Date(v+'T12:00'),now=new Date();w.style.display=(t>now||now-t>548*864e5)?'block':'none'};
+  $('#rcD').addEventListener('input',dateCheck);dateCheck();const _fill=fill;
   $('#rcRead').onclick=()=>readNow(true);
   $('#rcView').onclick=()=>viewReceipt(d);
   if(noText)readNow(false);
