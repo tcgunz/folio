@@ -257,9 +257,10 @@ table.xs tfoot td{font-weight:700;padding:10px 8px;background:#f9fafb}
     <button data-m="scan"><span class="ic" data-i="scan"></span>Scan document</button>
     <button data-m="save"><span class="ic" data-i="download"></span>Save PDF…</button>
     <button data-m="lib"><span class="ic" data-i="books"></span>Library</button>
+    <button data-m="region"><span class="ic" data-i="globe"></span>Region &amp; currency</button>
     <hr>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 30</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 31</div>
   </div>
 </div>
 
@@ -536,6 +537,7 @@ const IC={
  wmark:"M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11zM3 3l18 18",
  rotpage:"M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5M9 9h6v6H9z",
  share:"M12 3v12M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6",
+ globe:"M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18",
  books:"M4 4h4v16H4zM10 4h4v16h-4zM16 5l3.5-1 2.5 15-3.5 1z",
  bolt:"M13 2 4 14h7l-1 8 9-12h-7z"
 };
@@ -1052,6 +1054,7 @@ function menuAct(m){
   if(m==='form')openForm();
   if(m==='wm')openWm();
   if(m==='lib')openLibrary();
+  if(m==='region')openRegion();
   if(m==='ocr')ocrDocument();
   if(m==='alltext')showAllText();
   if(m==='scan')openScanner();
@@ -1625,7 +1628,7 @@ $('#scLive').onclick=openLive;
 /* ---------------- OCR (text recognition) ---------------- */
 let tessP=null;
 function loadTess(){if(window.Tesseract)return Promise.resolve();if(!tessP)tessP=new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';s.onload=res;s.onerror=()=>{tessP=null;rej(new Error('Could not load the text reader'))};document.head.appendChild(s)});return tessP}
-async function ocrWorker(onProg){await loadTess();return Tesseract.createWorker('eng',1,{logger:m=>{if(m.status==='recognizing text'&&onProg)onProg(m.progress||0)}})}
+async function ocrWorker(onProg){await loadTess();return Tesseract.createWorker(REGION.lang||'eng',1,{logger:m=>{if(m.status==='recognizing text'&&onProg)onProg(m.progress||0)}})}
 function imgFrom(url){return new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url})}
 async function ocrCanvas(worker,c){
   const s=Math.min(1,2600/Math.max(c.width,c.height));const src=s<1?downscale(c,2600):c;
@@ -1853,7 +1856,7 @@ function renderLibGrid(){
   if(!list.length){G.innerHTML=`<div class="sempty" style="color:var(--ink)"><div class="ic" style="background:var(--acc2);color:var(--acc)">${icon('folder')}</div><h2>${q?'No matches':'Nothing here yet'}</h2><p style="color:var(--muted)">${q?'Try a different word. Search looks inside scanned text too.':'When you save a PDF or a scan, choose a folder and it will appear here.'}</p></div>`;return}
   const dt=t=>new Date(t).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'});
   setTimeout(()=>{if(LIB.sel)libSelUpdate()},0);
-  G.innerHTML=`<div class="lgrid">${list.map(d=>`<div class="lcard" data-id="${d.id}"><button class="lmore" data-more="${d.id}" aria-label="More">⋯</button><div class="lth">${d.thumb?`<img src="${d.thumb}" alt="">`:icon('filePlus')}</div><b>${esc(d.receipt&&d.receipt.vendor?d.receipt.vendor:d.name)}</b>${d.receipt&&d.receipt.total?`<span class="lamt">$${esc(d.receipt.total)}${d.receipt.category?' · '+esc(d.receipt.category):''}</span>`:''}<span>${esc(d.folder)} · ${d.receipt&&d.receipt.date?esc(d.receipt.date):dt(d.updated)}</span></div>`).join('')}</div>`;
+  G.innerHTML=`<div class="lgrid">${list.map(d=>`<div class="lcard" data-id="${d.id}"><button class="lmore" data-more="${d.id}" aria-label="More">⋯</button><div class="lth">${d.thumb?`<img src="${d.thumb}" alt="">`:icon('filePlus')}</div><b>${esc(d.receipt&&d.receipt.vendor?d.receipt.vendor:d.name)}</b>${d.receipt&&d.receipt.total?`<span class="lamt">${esc(fmtMoney(d.receipt.total))}${d.receipt.category?' · '+esc(d.receipt.category):''}</span>`:''}<span>${esc(d.folder)} · ${d.receipt&&d.receipt.date?esc(d.receipt.date):dt(d.updated)}</span></div>`).join('')}</div>`;
 }
 $('#libChips').addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;
   if(b.dataset.new){openModal(`<h3>New folder</h3><input type="text" id="nfName" placeholder="e.g. Business 2026"><div class="btns"><button class="btn" data-x>Cancel</button><button class="btn pri" id="nfOk">Create</button></div>`);setTimeout(()=>$('#nfName').focus(),50);
@@ -1934,6 +1937,43 @@ $('#libSelMerge').onclick=async()=>{const ds=libSelDocs();if(ds.length<2){toast(
 
 $('#fRestore').onchange=e=>{const f=e.files&&e.files[0];if(f)libRestore(f)};
 
+/* ---------------- Region: currency, tax, date order, reading languages ---------------- */
+const REGION_PRESETS=[
+ {id:'ca-on',name:'Canada – Ontario',locale:'en-CA',cur:'CAD',tax:'HST',rate:13,date:'MDY',lang:'eng+fra'},
+ {id:'ca-qc',name:'Canada – Québec',locale:'fr-CA',cur:'CAD',tax:'TPS+TVQ',rate:14.975,date:'DMY',lang:'fra+eng'},
+ {id:'ca-bc',name:'Canada – British Columbia',locale:'en-CA',cur:'CAD',tax:'GST+PST',rate:12,date:'MDY',lang:'eng+fra'},
+ {id:'ca-ab',name:'Canada – Alberta / territories',locale:'en-CA',cur:'CAD',tax:'GST',rate:5,date:'MDY',lang:'eng+fra'},
+ {id:'ca-x',name:'Canada – other province',locale:'en-CA',cur:'CAD',tax:'HST',rate:15,date:'MDY',lang:'eng+fra'},
+ {id:'us',name:'United States',locale:'en-US',cur:'USD',tax:'Sales tax',rate:0,date:'MDY',lang:'eng+spa'},
+ {id:'uk',name:'United Kingdom',locale:'en-GB',cur:'GBP',tax:'VAT',rate:20,date:'DMY',lang:'eng'},
+ {id:'ie',name:'Ireland',locale:'en-IE',cur:'EUR',tax:'VAT',rate:23,date:'DMY',lang:'eng'},
+ {id:'au',name:'Australia',locale:'en-AU',cur:'AUD',tax:'GST',rate:10,date:'DMY',lang:'eng'},
+ {id:'nz',name:'New Zealand',locale:'en-NZ',cur:'NZD',tax:'GST',rate:15,date:'DMY',lang:'eng'},
+ {id:'mx',name:'Mexico',locale:'es-MX',cur:'MXN',tax:'IVA',rate:16,date:'DMY',lang:'spa+eng'},
+ {id:'other',name:'Other',locale:(navigator.language||'en-US'),cur:'USD',tax:'Tax',rate:0,date:'DMY',lang:'eng'}];
+const OCR_LANGS=[['eng','English'],['eng+fra','English + French'],['fra+eng','French + English'],['eng+spa','English + Spanish'],['spa+eng','Spanish + English'],['eng+deu','English + German'],['eng+ita','English + Italian'],['eng+por','English + Portuguese'],['eng+chi_sim','English + Chinese']];
+let REGION=(()=>{try{const r=JSON.parse(localStorage.getItem('folio.region')||'null');if(r&&r.cur)return r}catch(e){}return{...REGION_PRESETS[0]}})();
+const fmtMoney=v=>{try{return new Intl.NumberFormat(REGION.locale,{style:'currency',currency:REGION.cur}).format(Number(v)||0)}catch(e){return '$'+(Number(v)||0).toFixed(2)}};
+const curSym=()=>{try{return(new Intl.NumberFormat(REGION.locale,{style:'currency',currency:REGION.cur}).formatToParts(0).find(p=>p.type==='currency')||{}).value||REGION.cur}catch(e){return '$'}};
+function openRegion(){
+  const r={...REGION};
+  openModal(`<h3>Region</h3><p class="small" style="margin-top:-6px">Sets money, tax and dates for receipts, and the languages Folio reads.</p>
+   <div class="fld"><label>Country / province</label><select id="rgP">${REGION_PRESETS.map(p=>`<option value="${p.id}" ${p.id===r.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select></div>
+   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <div class="fld"><label>Currency code</label><input type="text" id="rgC" value="${esc(r.cur)}" maxlength="3" style="text-transform:uppercase"></div>
+    <div class="fld"><label>Tax name</label><input type="text" id="rgT" value="${esc(r.tax)}"></div>
+    <div class="fld"><label>Usual tax rate (%)</label><input type="text" id="rgR" inputmode="decimal" value="${r.rate}"></div>
+    <div class="fld"><label>Dates like 03/09 mean</label><select id="rgD"><option value="MDY" ${r.date==='MDY'?'selected':''}>Month first (Mar 9)</option><option value="DMY" ${r.date==='DMY'?'selected':''}>Day first (3 Sep)</option></select></div></div>
+   <div class="fld"><label>Read receipts in</label><select id="rgL">${OCR_LANGS.map(([k,l])=>`<option value="${k}" ${k===r.lang?'selected':''}>${l}</option>`).join('')}</select></div>
+   <p class="small">Tax rates change from time to time, so check the rate is right for you. Set it to 0 to hide the tax helper.</p>
+   <div class="btns"><button class="btn" data-x>Cancel</button><button class="btn pri" id="rgOk">Save</button></div>`);
+  $('#rgP').onchange=()=>{const p=REGION_PRESETS.find(x=>x.id===$('#rgP').value);if(!p)return;$('#rgC').value=p.cur;$('#rgT').value=p.tax;$('#rgR').value=p.rate;$('#rgD').value=p.date;$('#rgL').value=p.lang};
+  $('#rgOk').onclick=()=>{const p=REGION_PRESETS.find(x=>x.id===$('#rgP').value)||REGION_PRESETS[0];const cur=($('#rgC').value||'CAD').trim().toUpperCase().slice(0,3);
+    let okCur=true;try{new Intl.NumberFormat('en',{style:'currency',currency:cur})}catch(e){okCur=false}if(!okCur){toast('That currency code isn’t recognised (try CAD, USD, EUR, GBP)');return}
+    REGION={id:p.id,name:p.name,locale:p.locale,cur,tax:$('#rgT').value.trim()||'Tax',rate:Math.max(0,Math.min(40,parseFloat($('#rgR').value)||0)),date:$('#rgD').value,lang:$('#rgL').value};
+    lsSet('folio.region',JSON.stringify(REGION));closeModal();toast('Region saved: '+REGION.name);if($('#sheet').classList.contains('on'))renderSheet()};
+}
+
 /* well-known Canadian stores → name + usual category */
 const BRANDS=[
  ['Esso',/\besso\b/i,'Vehicle & fuel'],['Shell',/\bshell\b/i,'Vehicle & fuel'],['Petro-Canada',/petro[\s-]*can/i,'Vehicle & fuel'],['Circle K',/circle\s*k\b/i,'Vehicle & fuel'],
@@ -1973,7 +2013,7 @@ function rcDate(text){
     const r1=/\b(20\d\d)[-/.](\d{1,2})[-/.](\d{1,2})\b/g;while((m=r1.exec(ln)))add(iso([+m[1],+m[2],+m[3]]));
     const r2=/\b(\d{1,2})\s*[-/ .]?\s*([A-Za-zéû]{3,5})\.?\s*[-/ .,]?\s*(20\d\d|\d\d)\b/g;while((m=r2.exec(ln))){const mo=MONTHS[m[2].toLowerCase()];if(mo)add(iso([fixY(+m[3]),mo,+m[1]]))}
     const r3=/\b([A-Za-zéû]{3,5})\.?\s+(\d{1,2}),?\s+(20\d\d)\b/g;while((m=r3.exec(ln))){const mo=MONTHS[m[1].toLowerCase()];if(mo)add(iso([+m[3],mo,+m[2]]))}
-    const r4=/\b(\d{1,2})[/-](\d{1,2})[/-](20\d\d|\d\d)\b/g;while((m=r4.exec(ln))){let a=+m[1],b=+m[2],y=fixY(+m[3]),mo=a,dd=b;if(a>12&&b<=12){dd=a;mo=b}add(iso([y,mo,dd]))}
+    const r4=/\b(\d{1,2})[/-](\d{1,2})[/-](20\d\d|\d\d)\b/g;while((m=r4.exec(ln))){let a=+m[1],b=+m[2],y=fixY(+m[3]),mo=a,dd=b;if((a>12&&b<=12)||(REGION.date==='DMY'&&a<=12&&b<=12)){dd=a;mo=b}add(iso([y,mo,dd]))}
   });
   cands.sort((a,b)=>b.hasTime-a.hasTime||a.li-b.li);return cands.length?cands[0].v:'';
 }
@@ -1998,18 +2038,18 @@ function readReceipt(text){
   const taxes=[];let sub=null;
   for(const l of lines){
     if(/sub\s*-?\s*total|before\s*tax|pre[\s-]*tax/i.test(l)){const a=rcAmounts(l);if(a.length)sub=a[a.length-1]}
-    if(/\b(hst|gst|pst|qst|tps|tvq|tvh|sales\s*tax|tax|taxes)\b/i.test(l)&&!/before|excl|tax\s*total|total\s*tax|no\s*tax|tax\s*exempt|tax\s*id|\breg(istration)?\b|#|%\s*off|savings|sub\s*-?\s*total/i.test(l.replace(/\$/g,''))){
-      const a=rcAmounts(l);if(a.length){const v=a[a.length-1];if(v>0&&(!total||v<total))taxes.push({v,strong:/sales\s*tax|\bhst\b|\bgst\b|\bpst\b|\bqst\b|\btps\b|\btvq\b|\btvh\b/i.test(l)})}}}
+    if(/\b(hst|gst|pst|qst|tps|tvq|tvh|sales\s*tax|tax|taxes|vat|tva|iva|mwst|ust|btw|moms|taxe)\b/i.test(l)&&!/before|excl|tax\s*total|total\s*tax|no\s*tax|tax\s*exempt|tax\s*id|\breg(istration)?\b|#|%\s*off|savings|sub\s*-?\s*total/i.test(l.replace(/\$/g,''))){
+      const a=rcAmounts(l);if(a.length){const v=a[a.length-1];if(v>0&&(!total||v<total))taxes.push({v,strong:/sales\s*tax|\bhst\b|\bgst\b|\bpst\b|\bqst\b|\btps\b|\btvq\b|\btvh\b|\bvat\b|\btva\b|\biva\b|\bmwst\b/i.test(l)})}}}
   if(taxes.length){
     const near=(a,b)=>Math.abs(a-b)<=Math.max(.03,b*.01);let pick=null;
     const uniq=[...new Map(taxes.map(t=>[t.v.toFixed(2),t])).values()];
     // 1) a tax line that equals total − subtotal
     if(total&&sub&&sub<total){const want=total-sub;const m=uniq.find(t=>near(t.v,want));if(m)pick=m.v;else if(near(uniq.reduce((a,t)=>a+t.v,0),want))pick=want}
     // 2) a tax line matching a standard Canadian rate (13% HST, 5% GST, 15% HST, 14.975% QC)
-    if(pick===null&&total)for(const rate of[.13,.05,.15,.14975]){const want=total*rate/(1+rate);const m=uniq.find(t=>near(t.v,want));if(m){pick=m.v;break}}
+    if(pick===null&&total)for(const rate of[REGION.rate/100,.13,.05,.15,.14975,.12,.2,.1].filter((x,i,a)=>x>0&&a.indexOf(x)===i)){const want=total*rate/(1+rate);const m=uniq.find(t=>near(t.v,want));if(m){pick=m.v;break}}
     // 3) otherwise: clearly-labelled tax lines added together, if believable
     if(pick===null){const strong=uniq.filter(t=>t.strong),use=strong.length?strong:uniq,sum=use.reduce((a,t)=>a+t.v,0);
-      if(!total||sum<=total*.151)pick=sum;else{const ok=use.filter(t=>t.v<=total*.151);if(ok.length){const want=total*13/113;pick=ok.reduce((a,t)=>Math.abs(t.v-want)<Math.abs(a-want)?t.v:a,ok[0].v)}}}
+      const capR=Math.max(.151,REGION.rate/100+.02);if(!total||sum<=total*capR)pick=sum;else{const ok=use.filter(t=>t.v<=total*capR);if(ok.length){const rr=(REGION.rate||13)/100,want=total*rr/(1+rr);pick=ok.reduce((a,t)=>Math.abs(t.v-want)<Math.abs(a-want)?t.v:a,ok[0].v)}}}
     if(pick!==null)r.tax=pick.toFixed(2)}
   const PAY=[['Visa',/\bv[i1l!|]sa\b/i],['Mastercard',/master\s*c[a@]rd|\bmc\b/i],['Amex',/amex|american express/i],['Debit',/interac|\bdebit\b|débit/i],['Apple Pay',/apple\s*pay/i],['Google Pay',/google\s*pay/i],['Cash',/\bcash\b|comptant/i]];
   for(const[n,re]of PAY)if(re.test(text)){r.payment=n;break}
@@ -2075,7 +2115,7 @@ function openReceiptDetails(d,isNew){
    <p class="small" id="rcStatus" style="margin-top:-6px;display:none"></p>
    <button class="btn" id="rcView" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:12px">${icon('image')} View receipt</button>
    ${inp('rcV','Store',r.vendor)}
-   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div>${inp('rcD','Date',r.date,'date')}<p class="small" id="rcDw" style="display:none;color:#d97706;margin:-6px 0 8px">Check the year: it looks unusual.</p></div>${inp('rcT','Total ($)',r.total,'text','inputmode="decimal"')}<div>${inp('rcX','Tax ($)',r.tax,'text','inputmode="decimal"')}<button class="link small" id="rcHst" style="display:none;margin:-6px 0 8px;text-align:left"></button></div>
+   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div>${inp('rcD','Date',r.date,'date')}<p class="small" id="rcDw" style="display:none;color:#d97706;margin:-6px 0 8px">Check the year: it looks unusual.</p></div>${inp('rcT',`Total (${curSym()})`,r.total,'text','inputmode="decimal"')}<div>${inp('rcX',`Tax (${curSym()})`,r.tax,'text','inputmode="decimal"')}<button class="link small" id="rcHst" style="display:none;margin:-6px 0 8px;text-align:left"></button></div>
    <div class="fld"><label>Paid with</label><select id="rcP">${['','Visa','Mastercard','Amex','Debit','Cash','Apple Pay','Google Pay','Gift card','Cheque','E-transfer','Other'].map(p=>`<option ${p===r.payment?'selected':''}>${p}</option>`).join('')}</select></div></div>
    <div class="fld"><label>Category</label><select id="rcC"><option value=""></option>${cats.map(c=>`<option ${c===r.category?'selected':''}>${esc(c)}</option>`).join('')}</select></div>
    ${inp('rcN','Description (what it was for)',r.note)}
@@ -2095,7 +2135,7 @@ function openReceiptDetails(d,isNew){
   const dateCheck=()=>{const v=$('#rcD')&&$('#rcD').value,w=$('#rcDw');if(!w)return;if(!v){w.style.display='none';return}const t=new Date(v+'T12:00'),now=new Date();w.style.display=(t>now||now-t>548*864e5)?'block':'none'};
   $('#rcD').addEventListener('input',dateCheck);dateCheck();
   const hstHint=()=>{const t=parseFloat(($('#rcT').value||'').replace(/[^0-9.]/g,'')),b=$('#rcHst');if(!b)return;if(!t){b.style.display='none';return}
-    const h=(t*13/113).toFixed(2),x=parseFloat($('#rcX').value||'');b.style.display='block';b.textContent=`13% HST included would be $${h}${x&&Math.abs(x-h)>.05?' · tap to use':''}`;b.onclick=()=>{$('#rcX').value=h;hstHint()}};
+    if(!REGION.rate){b.style.display='none';return}const rr=REGION.rate/100,h=(t*rr/(1+rr)).toFixed(2),x=parseFloat($('#rcX').value||'');b.style.display='block';b.textContent=`${REGION.rate}% ${REGION.tax} included would be ${fmtMoney(h)}${x&&Math.abs(x-h)>.05?' · tap to use':''}`;b.onclick=()=>{$('#rcX').value=h;hstHint()}};
   ['rcT','rcX'].forEach(id=>$('#'+id).addEventListener('input',hstHint));hstHint();const _fill=fill;
   $('#rcRead').onclick=()=>readNow(true);
   $('#rcView').onclick=()=>viewReceipt(d);
@@ -2116,14 +2156,14 @@ function exportCSV(listIn){
   if(!list.length){toast('Nothing to export in this view');return}
   const withR=list.filter(d=>d.receipt);if(!withR.length){toast('No receipt details yet. Tap ⋯ → Receipt details on a receipt first.',4500);return}
   list.sort((a,b)=>((a.receipt&&a.receipt.date)||'9999').localeCompare((b.receipt&&b.receipt.date)||'9999')||a.created-b.created);
-  const rows=[['Date','Month','Store','Description','Category','Paid with','Tax','Total','Folder','Document']];let tt=0,tx=0;const months={};
+  const rows=[['Date','Month','Store','Description','Category','Paid with',`Tax (${REGION.cur})`,`Total (${REGION.cur})`,'Folder','Document']];let tt=0,tx=0;const months={};
   for(const d of list){const r=d.receipt||{};const t=parseFloat(r.total)||0,x=parseFloat(r.tax)||0;tt+=t;tx+=x;const mo=(r.date||'').slice(0,7);if(mo)months[mo]=(months[mo]||0)+t;
     rows.push([r.date||'',mo,r.vendor||'',r.note||'',r.category||'',r.payment||'',r.tax||'',r.total||'',d.folder,d.name])}
   rows.push([]);rows.push(['','','','','','TOTAL',tx.toFixed(2),tt.toFixed(2)]);
   const mk=Object.keys(months).sort();if(mk.length){rows.push([]);rows.push(['Monthly totals']);rows.push(['Month','Total']);mk.forEach(m=>rows.push([m,months[m].toFixed(2)]))}
   const csv='\ufeff'+rows.map(r=>r.map(csvCell).join(',')).join('\r\n');const t=new Date();
   offerDownload(`${LIB.folder||'Library'} ${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}.csv`,new TextEncoder().encode(csv),'text/csv');
-  toast(`Exported ${list.length} row${list.length>1?'s':''} · total $${tt.toFixed(2)}`,4000);
+  toast(`Exported ${list.length} row${list.length>1?'s':''} · total ${fmtMoney(tt)}`,4000);
 }
 const libSearchText=d=>(d.name+' '+d.folder+' '+(d.text||'')+' '+(d.receipt?Object.values(d.receipt).join(' '):'')).toLowerCase();
 $('#libCsv').onclick=()=>exportCSV();
@@ -2131,7 +2171,7 @@ $('#libCsv').onclick=()=>exportCSV();
 const SH={rows:[],sort:'date',dir:1,month:''};
 const PAYS=['','Visa','Mastercard','Amex','Debit','Cash','Apple Pay','Google Pay','Gift card','Cheque','E-transfer','Other'];
 const SHCOLS=[['date','Date'],['vendor','Store'],['note','Description'],['category','Category'],['payment','Paid with'],['tax','Tax'],['total','Total']];
-const money=v=>'$'+(Number(v)||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+const money=v=>fmtMoney(v);
 function openSheet(){
   SH.rows=LIB.docs.filter(d=>!LIB.folder||d.folder===LIB.folder);
   if(!SH.rows.length){toast('This folder is empty');return}
@@ -2190,7 +2230,7 @@ function renderSheetList(){
   $('#shTable').innerHTML=`<div class="xl">${rows.map(d=>{const r=d.receipt||{},missing=!r.total;return`<div class="xr" data-row="${d.id}">
     <button class="xth" data-open="${d.id}">${d.thumb?`<img src="${d.thumb}" alt="">`:'📄'}</button>
     <div class="xm"><b>${esc(r.vendor||d.name)}</b><span>${missing?'<em>Needs details · tap to fill in</em>':esc([dt(r.date),r.category,r.payment].filter(Boolean).join(' · '))}</span>${r.note?`<span>${esc(r.note)}</span>`:''}</div>
-    <div class="xa">${missing?'':`<b>${money(r.total)}</b>${r.tax?`<span>tax ${money(r.tax)}</span>`:''}`}</div></div>`}).join('')}</div>`;
+    <div class="xa">${missing?'':`<b>${money(r.total)}</b>${r.tax?`<span>${esc(REGION.tax)} ${money(r.tax)}</span>`:''}`}</div></div>`}).join('')}</div>`;
   shTotals();
 }
 async function fillMissing(){
