@@ -556,7 +556,7 @@ function relayout(keep=true){
     const lab=document.createElement('div');lab.className='pnum';lab.textContent=(i+1);
     el.append(c1,c2,lab);box.append(el);
     const e={id:pg.id,el,c1,c2,vp,rendered:false};
-    let dpr=Math.min(window.devicePixelRatio||1,2);while(vp.width*vp.height*dpr*dpr>12e6&&dpr>.6)dpr*=.85;e.dpr=dpr;
+    let dpr=Math.min(window.devicePixelRatio||1,3);while(vp.width*vp.height*dpr*dpr>16e6&&dpr>.6)dpr*=.85;e.dpr=dpr;
     c2.width=Math.round(vp.width*dpr);c2.height=Math.round(vp.height*dpr);
     bindOverlay(e);els.set(pg.id,e);drawOverlay(e);io.observe(el);
   });
@@ -962,7 +962,7 @@ function renderScan(){
   const B=$('#scanBody');const n=SC.pages.length;$('#scCount').textContent=n?`${n} page${n>1?'s':''}`:'';
   $('#scSave').disabled=$('#scEdit').disabled=!n;
   if(!n){B.innerHTML=`<div class="sempty"><div class="ic">${icon('scan')}</div><h2>Scan paper to PDF</h2><p><b style="color:#5eead4">Auto scan</b> watches through your camera and grabs each page by itself once it\u2019s held steady. Just turn the pages.<br><br><b>Camera</b> and <b>Photos</b> also crop, straighten and clean each page automatically.<br><br>Tip: put the paper on a dark surface in good light.</p></div>`;return}
-  B.innerHTML=`<div class="sgrid">${SC.pages.map((p,i)=>`<div class="scard"><img src="${p.out}" data-ed="${i}" alt="Page ${i+1}"><div class="r"><button data-sa="l" data-i="${i}" ${i?'':'disabled'}>${icon('left')}</button><span>Page ${i+1}</span><button data-sa="r" data-i="${i}" ${i<n-1?'':'disabled'}>${icon('right')}</button><button data-sa="x" data-i="${i}">${icon('trash')}</button></div></div>`).join('')}</div>`;
+  B.innerHTML=`<div class="sgrid">${SC.pages.map((p,i)=>`<div class="scard"><img src="${p.out}" data-ed="${i}" alt="Page ${i+1}"><div class="r"><button data-sa="l" data-i="${i}" ${i?'':'disabled'}>${icon('left')}</button><span>Page ${i+1}<br><small style="opacity:.6">${p.ow||''}×${p.oh||''}</small></span><button data-sa="r" data-i="${i}" ${i<n-1?'':'disabled'}>${icon('right')}</button><button data-sa="x" data-i="${i}">${icon('trash')}</button></div></div>`).join('')}</div>`;
 }
 $('#scanBody').addEventListener('click',ev=>{
   const im=ev.target.closest('[data-ed]');if(im){openCrop(+im.dataset.ed);return}
@@ -1012,7 +1012,7 @@ function homography(from,to){
 }
 function warp(c,q){
   const D=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]);let W=Math.max(D(q[0],q[1]),D(q[3],q[2])),H=Math.max(D(q[0],q[3]),D(q[1],q[2]));
-  const cap=3400/Math.max(W,H);if(cap<1){W*=cap;H*=cap}W=Math.max(8,Math.round(W));H=Math.max(8,Math.round(H));
+  const cap=4400/Math.max(W,H);if(cap<1){W*=cap;H*=cap}W=Math.max(8,Math.round(W));H=Math.max(8,Math.round(H));
   const h=homography([[0,0],[W,0],[W,H],[0,H]],q);const sw=c.width,sh=c.height,sd=c.getContext('2d').getImageData(0,0,sw,sh).data;
   const out=new ImageData(W,H),od=out.data,mx=sw-1.001,my=sh-1.001,row=sw*4;
   for(let y=0;y<H;y++){const v=y+.5;for(let x=0;x<W;x++){const u=x+.5,den=h[6]*u+h[7]*v+1;let sx=(h[0]*u+h[1]*v+h[2])/den-.5,sy=(h[3]*u+h[4]*v+h[5])/den-.5;
@@ -1036,13 +1036,15 @@ function applyFilter(img,mode){
       if(mode==='auto'){const l=L[i]*f;for(let k=0;k<3;k++){let v=d[j+k]*f;v=l+(v-l)*1.25;v=(v-22)*1.1;d[j+k]=v}}
       else{let v=L[i]*f;if(mode==='gray')v=(v-22)*1.1;else v=v<150?0:v>205?255:(v-150)*4.6;d[j]=d[j+1]=d[j+2]=v}}}
 }
-async function makeScanPage(src){const full=downscale(src,4000);const blob=await new Promise(r=>full.toBlob(r,'image/jpeg',.94));return{id:uid++,blob,c:downscale(full,1600),rot:0,filter:'auto'}}
+function sharpen(img){const w=img.width,h=img.height,d=img.data,src=new Uint8ClampedArray(d),a=.7;
+  for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){const i=(y*w+x)*4;for(let k=0;k<3;k++){const c=src[i+k],bl=(src[i-4+k]+src[i+4+k]+src[i-w*4+k]+src[i+w*4+k])/4;d[i+k]=c+(c-bl)*a}}}
+async function makeScanPage(src){const full=downscale(src,5000);const blob=await new Promise(r=>full.toBlob(r,'image/jpeg',.95));return{id:uid++,blob,c:downscale(full,1600),rot:0,filter:'auto'}}
 async function fullCanvas(p){if(!p.blob)return p.c;const bmp=await createImageBitmap(p.blob);const c=document.createElement('canvas');c.width=bmp.width;c.height=bmp.height;c.getContext('2d').drawImage(bmp,0,0);try{bmp.close()}catch(e){}return c}
 async function processScan(p,look){
-  await tick();const full=await fullCanvas(p),k=full.width/p.c.width;const im=warp(full,p.q.map(([x,y])=>[x*k,y*k]));applyFilter(im,look||p.filter);
+  await tick();const full=await fullCanvas(p),k=full.width/p.c.width;const im=warp(full,p.q.map(([x,y])=>[x*k,y*k]));if((look||p.filter)!=='orig')sharpen(im);applyFilter(im,look||p.filter);
   let c=document.createElement('canvas');c.width=im.width;c.height=im.height;c.getContext('2d').putImageData(im,0,0);
   if(p.rot){const r=document.createElement('canvas'),q=p.rot%180;r.width=q?c.height:c.width;r.height=q?c.width:c.height;const x=r.getContext('2d');x.translate(r.width/2,r.height/2);x.rotate(p.rot*Math.PI/180);x.drawImage(c,-c.width/2,-c.height/2);c=r}
-  const url=c.toDataURL('image/jpeg',.9);if(look)return url;p.out=url;p.ow=c.width;p.oh=c.height;
+  const url=c.toDataURL('image/jpeg',.92);if(look)return url;p.out=url;p.ow=c.width;p.oh=c.height;
 }
 async function scansToPdf(){
   const d=await PDFLib.PDFDocument.create();
@@ -1300,7 +1302,7 @@ const HOLDS=[1.5,2.5,4];const needFrames=()=>Math.round(LV.hold/.17);
 const lvSmall=document.createElement('canvas');
 async function openLive(){
   if(!window.isSecureContext||!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){toast("Live camera isn't available here. Use Camera instead: pages still get cropped and cleaned automatically.",5000);return}
-  toast('Starting camera…',2000);try{LV.stream=await Promise.race([navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:window.ImageCapture?1920:3840},height:{ideal:window.ImageCapture?1440:2160}},audio:false}),new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),9000))])}
+  toast('Starting camera…',2000);try{LV.stream=await Promise.race([navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:4096},height:{ideal:3072}},audio:false}),new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),9000))])}
   catch(e){toast("The live camera is blocked here. Use Camera instead: pages still get cropped and cleaned automatically.",5000);return}
   const v=$('#lvVid');v.srcObject=LV.stream;try{await v.play()}catch(e){}
   Object.assign(LV,{prev:null,q:null,stable:0,armed:true,busy:false,ref:null});
@@ -1337,7 +1339,7 @@ async function liveCapture(){
   $('#lvMsg').textContent='Capturing… keep still';
   try{const fr=document.createElement('canvas');fr.width=v.videoWidth;fr.height=v.videoHeight;fr.getContext('2d').drawImage(v,0,0);LV.ref=grayThumb(fr);const lq=LV.q;
     let src=fr;
-    if(window.ImageCapture&&LV.stream){try{const ic=new ImageCapture(LV.stream.getVideoTracks()[0]);const blob=await Promise.race([ic.takePhoto(),new Promise((_,r)=>setTimeout(()=>r(new Error('t')),6000))]);const bmp=await createImageBitmap(blob);if(bmp.width*bmp.height>fr.width*fr.height)src=bmp}catch(e){}}
+    if(window.ImageCapture&&LV.stream){try{const ic=new ImageCapture(LV.stream.getVideoTracks()[0]);let opt={};try{const cp=await ic.getPhotoCapabilities();if(cp.imageWidth&&cp.imageWidth.max)opt={imageWidth:cp.imageWidth.max,imageHeight:cp.imageHeight.max}}catch(e){}const blob=await Promise.race([ic.takePhoto(opt).catch(()=>ic.takePhoto()),new Promise((_,r)=>setTimeout(()=>r(new Error('t')),9000))]);const bmp=await createImageBitmap(blob);if(bmp.width*bmp.height>fr.width*fr.height)src=bmp}catch(e){}}
     const p=await makeScanPage(src);let q=detectQuad(p.c);
     if(!q.found&&lq&&Math.abs(p.c.width/p.c.height-fr.width/fr.height)<.03)q=lq.map(pt=>[pt[0]*p.c.width,pt[1]*p.c.height]);
     p.q=q;await processScan(p);SC.pages.push(p);LV.armed=false;LV.stable=0;LV.capAt=Date.now();updLiveUI()}
