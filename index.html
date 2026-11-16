@@ -373,7 +373,7 @@ body.ci #menu [data-m=region] .ic{color:var(--c-sky)}body.ci #menu [data-m=rctog
     <button data-m="rctoggle" id="mRc"><span class="ic" data-i="grid"></span><span id="mRcL">Hide Receipts &amp; expenses</span></button>
     <hr>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 63<br>© 2026 Tommy Chieng. All rights reserved.</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-16 · 64<br>© 2026 Tommy Chieng. All rights reserved.</div>
   </div>
 </div>
 
@@ -2398,7 +2398,9 @@ function openReceiptDetails(d,isNew){
     if(rr.payment&&(force||!$('#rcP').value))$('#rcP').value=rr.payment;const c=vcatGet($('#rcV').value)||rr.category;if(c&&!$('#rcC').value){const s=$('#rcC');if(![...s.options].some(o=>o.value===c))s.add(new Option(c,c));s.value=c}};
   const status=(t,red)=>{const el=$('#rcStatus');if(!el)return;el.style.display=t?'block':'none';el.style.color=red?'var(--danger)':'var(--acc)';el.textContent=t};
   const readNow=async force=>{const btn=$('#rcRead');if(btn)btn.disabled=true;status('Reading the receipt… this takes a few seconds');
-    try{const t=await ocrDocText(d,pr=>status(`Reading the receipt… ${Math.round(pr*100)}%`));if(!$('#rcOk'))return;
+    // text Folio already has (a PDF's own text, or an earlier reading) is instant and works offline
+    try{const have=(d.text||'').trim().length>=30&&/\d[.,]\d{2}/.test(d.text);let t;
+      try{t=have?d.text:await ocrDocText(d,pr=>status(`Reading the receipt… ${Math.round(pr*100)}%`))}catch(e){if((d.text||'').trim().length>=10)t=d.text;else throw e}if(!$('#rcOk'))return;
       if(t&&t.length>4){d.text=t;libPut(d).catch(()=>{});const rr=readReceipt(t);fill(rr,force);dateCheck();hstHint();mathCheck();const got=['vendor','date','total'].filter(k=>rr[k]).length;
         status(got?`Filled in what Folio could read${got<3?' (some fields need you)':''}. Check before saving.`:'Couldn’t find the details on this receipt. Please fill them in.',!got)}
       else status('Couldn’t read any words. The photo may be too blurry or faint. Please fill these in.',true)}
@@ -2545,10 +2547,10 @@ function exportCSV(listIn){
   if(!list.length){toast('Nothing to export in this view');return}
   const withR=list.filter(d=>d.receipt);if(!withR.length){toast('No receipt details yet. Tap ⋯ → Receipt details on a receipt first.',4500);return}
   list.sort((a,b)=>((a.receipt&&a.receipt.date)||'9999').localeCompare((b.receipt&&b.receipt.date)||'9999')||a.created-b.created);
-  const rows=[['Date','Month','Store','Description','Category','Paid with',`Subtotal (${REGION.cur})`,`Tax (${REGION.cur})`,`Tip (${REGION.cur})`,`Total (${REGION.cur})`,'Folder','Document']];let tt=0,tx=0,tg=0;const months={};
-  for(const d of list){const r=d.receipt||{};const t=parseFloat(r.total)||0,x=parseFloat(r.tax)||0;tt+=t;tx+=x;tg+=parseFloat(r.tip)||0;const mo=(r.date||'').slice(0,7);if(mo)months[mo]=(months[mo]||0)+t;
-    const f2=v=>v===''||v==null||isNaN(parseFloat(v))?'':parseFloat(v).toFixed(2);rows.push([r.date||'',mo,r.vendor||'',r.note||'',r.category||'',r.payment||'',f2(r.subtotal),f2(r.tax),f2(r.tip),f2(r.total),d.folder,d.name])}
-  rows.push([]);rows.push(['','','','','','TOTAL',(tt-tx-tg).toFixed(2),tx.toFixed(2),tg.toFixed(2),tt.toFixed(2)]);
+  const rows=[['Receipt #','Date','Month','Store','Description','Category','Paid with',`Subtotal (${REGION.cur})`,`Tax (${REGION.cur})`,`Tip (${REGION.cur})`,`Total (${REGION.cur})`,'Folder','Document']];let tt=0,tx=0,tg=0;const months={};
+  let rn=0;for(const d of list){rn++;const r=d.receipt||{};const t=parseFloat(r.total)||0,x=parseFloat(r.tax)||0;tt+=t;tx+=x;tg+=parseFloat(r.tip)||0;const mo=(r.date||'').slice(0,7);if(mo)months[mo]=(months[mo]||0)+t;
+    const f2=v=>v===''||v==null||isNaN(parseFloat(v))?'':parseFloat(v).toFixed(2);rows.push(['R'+String(rn).padStart(3,'0'),r.date||'',mo,r.vendor||'',r.note||'',r.category||'',r.payment||'',f2(r.subtotal),f2(r.tax),f2(r.tip),f2(r.total),d.folder,d.name])}
+  rows.push([]);rows.push(['','','','','','','TOTAL',(tt-tx-tg).toFixed(2),tx.toFixed(2),tg.toFixed(2),tt.toFixed(2)]);
   const mk=Object.keys(months).sort();if(mk.length){rows.push([]);rows.push(['Monthly totals']);rows.push(['Month','Total']);mk.forEach(m=>rows.push([m,months[m].toFixed(2)]))}
   const csv=rows.map(r=>r.map(csvCell).join(',')).join('\r\n');const t=new Date();
   offerDownload(`${LIB.folder||'Library'} ${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}.csv`,new TextEncoder().encode(csv),'text/csv');
@@ -2731,23 +2733,26 @@ const PINCH={on:null};
 })();
 
 /* ---------------- phone back button: step back through screens instead of leaving ---------------- */
-const NAV={stack:[],skip:0,fromPop:false,last:0};
+const NAV={stack:[],fromPop:false,last:0};
+/* One extra history entry (the "guard") always sits on top of Folio's page. Pressing back lands on Folio's page,
+   we put the guard back and close whatever is on top. Closing screens from inside the app never touches history,
+   so quick close-then-open sequences can't drift back out of the app. */
+function navGuard(){try{history.pushState({folio:1},'')}catch(e){}}
 function navWatch(el,close){
   if(!el)return;let was=el.classList.contains('on');
   new MutationObserver(()=>{const on=el.classList.contains('on');if(on===was)return;was=on;
-    if(on){NAV.stack.push({el,close});try{history.pushState({folio:NAV.stack.length},'')}catch(e){}}
-    else{const i=NAV.stack.map(x=>x.el).lastIndexOf(el);if(i<0)return;NAV.stack.splice(i,1);if(!NAV.fromPop){NAV.skip++;history.back()}}
+    if(on)NAV.stack.push({el,close});
+    else{const i=NAV.stack.map(x=>x.el).lastIndexOf(el);if(i>=0)NAV.stack.splice(i,1)}
   }).observe(el,{attributes:true,attributeFilter:['class']});
 }
 addEventListener('popstate',()=>{
-  if(NAV.skip>0){NAV.skip--;return}
   const top=NAV.stack[NAV.stack.length-1];
-  if(top){NAV.fromPop=true;try{top.close()}finally{NAV.fromPop=false}if(NAV.stack[NAV.stack.length-1]===top)NAV.stack.pop();return}
-  if(S.pages.length){try{history.pushState({folio:0},'')}catch(e){}leaveDoc();return}
+  if(top){navGuard();NAV.fromPop=true;try{top.close()}finally{NAV.fromPop=false}if(NAV.stack[NAV.stack.length-1]===top)NAV.stack.pop();return}
+  if(S.pages.length){navGuard();leaveDoc();return}
   if(Date.now()-NAV.last<2200){history.back();return}
-  NAV.last=Date.now();toast('Press back again to exit Folio',2200);try{history.pushState({folio:0},'')}catch(e){}
+  NAV.last=Date.now();toast('Press back again to exit Folio',2200);navGuard();
 });
-try{history.pushState({folio:0},'')}catch(e){}
+navGuard();
 function leaveDoc(){
   const go=()=>{const fromLib=!!S.libId;resetDoc();closeDrawers();relayout(false);if(fromLib)openLibrary()};
   if(!S.dirty){go();return}
