@@ -374,7 +374,7 @@ body.ci #menu [data-m=region] .ic{color:var(--c-sky)}body.ci #menu [data-m=rctog
     <hr>
     <button data-m="about"><span class="ic" data-i="info"></span>About, terms &amp; licences</button>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-16 · 68<br>© 2026 Tommy Chieng. All rights reserved.</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-16 · 69<br>© 2026 Tommy Chieng. All rights reserved.</div>
   </div>
 </div>
 
@@ -2160,7 +2160,7 @@ async function reviewReceipts(ids){
      return `<button class="btn" data-rv="${i}" style="display:flex;gap:10px;align-items:center;width:100%;height:auto;padding:8px;margin:0 0 6px;text-align:left;justify-content:flex-start${miss?';border-color:#f59e0b':''}">
       ${d.thumb?`<img src="${d.thumb}" alt="" style="width:40px;height:52px;object-fit:cover;border-radius:6px;flex:none;background:#eee">`:''}
       <span style="flex:1;min-width:0"><b style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.vendor||'Store not read')}</b><span class="small">${esc(r.date||'No date')}${r.category?' · '+esc(r.category):''}</span></span>
-      <b style="flex:none">${r.total?esc(fmtMoney(+r.total)):'<span style="color:#d97706">Check</span>'}</b></button>`}).join('')}</div>
+      <b style="flex:none">${r.total?esc(fmtMoney(rcCharged(r))):'<span style="color:#d97706">Check</span>'}</b></button>`}).join('')}</div>
    <div class="btns"><button class="btn pri" data-x>Done</button></div>`);
   document.querySelectorAll('#modal [data-rv]').forEach(b=>b.onclick=()=>{const d=docs[+b.dataset.rv];closeModal();setTimeout(async()=>{const fresh=await libGet(d.id);openReceiptDetails(fresh||d,false,()=>reviewReceipts(ids))},250)});
   if($('#lib').classList.contains('on'))renderLib();
@@ -2557,10 +2557,17 @@ function readReceipt(text){
     if(pick!==null)r.tax=pick.toFixed(2)}
   {let tip=null;for(const l of lines)if(/\b(tip|tips|gratuit(y|é)|pourboire|propina|trinkgeld)\b/i.test(l)&&!/suggest|guide|\d{1,2}\s*%\s*[=:]|tip\s*%/i.test(l)){const a=rcAmounts(l);if(a.length&&a[a.length-1]>0)tip=a[a.length-1]}
    if(tip!==null&&(!total||tip<total*.6))r.tip=tip.toFixed(2)}
-  if(r.subtotal&&r.tax&&+r.tax>0){const want=+r.subtotal+ +r.tax+(+r.tip||0),t=+r.total||0;
-    if(Math.abs(want-t)>.03&&(allAmts.some(v=>Math.abs(v-want)<=.03)||!t||t<=+r.subtotal+.01))r.total=want.toFixed(2)}
-  if(!r.tax&&r.subtotal&&r.total){const d=+r.total- +r.subtotal-(+r.tip||0);if(d>.009&&d<=+r.subtotal*.16)r.tax=d.toFixed(2)}
-  if(!r.subtotal&&r.total&&r.tax)r.subtotal=(+r.total- +r.tax-(+r.tip||0)).toFixed(2);
+  // the total kept is the BILL total (subtotal + tax); a tip is separate and added on top
+  const tipV=+r.tip||0;
+  if(tipV&&r.total){const t=+r.total;
+    if(r.subtotal&&r.tax&&Math.abs(t-(+r.subtotal+ +r.tax+tipV))<=.03)r.total=(t-tipV).toFixed(2);
+    else if(r.subtotal&&!r.tax){const d=t-tipV- +r.subtotal;if(d>.009&&d<=+r.subtotal*.16&&allAmts.some(v=>Math.abs(v-(t-tipV))<=.03))r.total=(t-tipV).toFixed(2)}
+    else if(!r.subtotal&&allAmts.some(v=>Math.abs(v-(t-tipV))<=.03))r.total=(t-tipV).toFixed(2)}
+  if(r.subtotal&&r.tax&&+r.tax>0){const want=+r.subtotal+ +r.tax,t=+r.total||0;
+    if(Math.abs(want-t)>.03&&!(tipV&&Math.abs(want+tipV-t)<=.03)&&(allAmts.some(v=>Math.abs(v-want)<=.03)||!t||t<=+r.subtotal+.01))r.total=want.toFixed(2);
+    else if(tipV&&Math.abs(want+tipV-t)<=.03)r.total=want.toFixed(2)}
+  if(!r.tax&&r.subtotal&&r.total){const d=+r.total- +r.subtotal;if(d>.009&&d<=+r.subtotal*.16)r.tax=d.toFixed(2)}
+  if(!r.subtotal&&r.total&&r.tax)r.subtotal=(+r.total- +r.tax).toFixed(2);
   const PAY=[['Visa',/\bv[i1l!|]sa\b/i],['Mastercard',/master\s*c[a@]rd|\bmc\b/i],['Amex',/amex|american express/i],['Debit',/interac|\bdebit\b|débit/i],['Apple Pay',/apple\s*pay/i],['Google Pay',/google\s*pay/i],['Cash',/\bcash\b|comptant/i]];
   for(const[n,re]of PAY)if(re.test(text)){r.payment=n;break}
   if(!r.category)r.category=guessCategory(text);
@@ -2580,6 +2587,7 @@ function pickNewCat(selEl,prev){const n=(prompt('New category name (for example:
   if(![...selEl.options].some(o=>o.value===name)){const o=new Option(name,name),nw=[...selEl.options].find(o=>o.value===NEWCAT);selEl.add(o,nw||null)}
   selEl.value=name;toast(`Category “${name}” added`);return name}
 const isReceiptFolder=f=>/receipt|expense|reçu/i.test(f||'');
+function rcCharged(r){r=r||{};const t=parseFloat(r.total),g=parseFloat(r.tip)||0;return isNaN(t)?(g||0):+(t+g).toFixed(2)}
 function vcatGet(v){try{return(JSON.parse(lsGet('folio.vcat')||'{}'))[(v||'').toLowerCase()]||''}catch(e){return ''}}
 function vcatSet(v,c){if(!v||!c)return;try{const m=JSON.parse(lsGet('folio.vcat')||'{}');m[v.toLowerCase()]=c;lsSet('folio.vcat',JSON.stringify(m))}catch(e){}}
 /* ---------------- full-screen receipt viewer ---------------- */
@@ -2635,8 +2643,9 @@ function openReceiptDetails(d,isNew,after){
    <p class="small" id="rcStatus" style="margin-top:-6px;display:none"></p>
    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px"><button class="btn" id="rcView" style="display:flex;align-items:center;justify-content:center;gap:6px">${icon('image')} View receipt</button><button class="btn" id="rcRead" style="display:flex;align-items:center;justify-content:center;gap:6px">${icon('wand')} Read receipt</button></div>
    ${inp('rcV','Store',r.vendor)}
-   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${inp('rcS',`Subtotal (${curSym()})`,r.subtotal,'text','inputmode="decimal"')}<div>${inp('rcD','Date',r.date,'date')}<p class="small" id="rcDw" style="display:none;color:#d97706;margin:-6px 0 8px">Check the year: it looks unusual.</p></div>${inp('rcT',`Total (${curSym()})`,r.total,'text','inputmode="decimal"')}<div>${inp('rcX',`Tax (${curSym()})`,r.tax,'text','inputmode="decimal"')}<button class="link small" id="rcHst" style="display:none;margin:-6px 0 8px;text-align:left"></button></div>
-   ${inp('rcG',`Tip (${curSym()})`,r.tip,'text','inputmode="decimal"')}
+   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${inp('rcS',`Subtotal (${curSym()})`,r.subtotal,'text','inputmode="decimal"')}<div>${inp('rcD','Date',r.date,'date')}<p class="small" id="rcDw" style="display:none;color:#d97706;margin:-6px 0 8px">Check the year: it looks unusual.</p></div>${inp('rcT',`Bill total (${curSym()})`,r.total,'text','inputmode="decimal" placeholder="Before tip"')}<div>${inp('rcX',`Tax (${curSym()})`,r.tax,'text','inputmode="decimal"')}<button class="link small" id="rcHst" style="display:none;margin:-6px 0 8px;text-align:left"></button></div>
+   ${inp('rcG',`Tip (${curSym()})`,r.tip,'text','inputmode="decimal" placeholder="Added on top"')}
+   <div style="grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;background:var(--soft,#eef0ff);border-radius:10px;padding:8px 12px;margin:-2px 0 8px"><span><b>Amount charged</b><br><span class="small">Bill total + tip</span></span><b id="rcPaid" style="font-size:18px">–</b></div>
    <p class="small" id="rcMath" style="grid-column:1/-1;display:none;margin:-4px 0 6px"></p>
    <div class="fld"><label>Paid with</label><select id="rcP">${['','Visa','Mastercard','Amex','Debit','Cash','Apple Pay','Google Pay','Gift card','Cheque','E-transfer','Other'].map(p=>`<option ${p===r.payment?'selected':''}>${p}</option>`).join('')}</select></div></div>
    <div class="fld"><label>Category</label><select id="rcC"><option value=""></option>${cats.map(c=>`<option ${c===r.category?'selected':''}>${esc(c)}</option>`).join('')}<option>${NEWCAT}</option></select></div>
@@ -2662,13 +2671,18 @@ function openReceiptDetails(d,isNew,after){
   const hstHint=()=>{const n=id=>parseFloat((($('#'+id)||{}).value||'').replace(/[^0-9.]/g,'')),b=$('#rcHst');if(!b)return;
     const sb=n('rcS'),tt=n('rcT'),x=n('rcX'),tp=n('rcG')||0;if(!REGION.rate||(isNaN(sb)&&isNaN(tt))){b.style.display='none';return}const rr=REGION.rate/100;
     const onTop=!isNaN(sb)&&(isNaN(tt)||tt<=sb+.01||isNaN(x));let h,txt,apply;
-    if(onTop){h=+(sb*rr).toFixed(2);const tot=+(sb+h+tp).toFixed(2);txt=`${REGION.rate}% ${REGION.tax} on the subtotal = ${fmtMoney(h)} (total ${fmtMoney(tot)})`;apply=()=>{$('#rcX').value=h.toFixed(2);$('#rcT').value=tot.toFixed(2)}}
-    else{h=+(tt*rr/(1+rr)).toFixed(2);txt=`${REGION.rate}% ${REGION.tax} included in the total would be ${fmtMoney(h)}`;apply=()=>{$('#rcX').value=h.toFixed(2);$('#rcS').value=(tt-h-tp).toFixed(2)}}
+    if(onTop){h=+(sb*rr).toFixed(2);const tot=+(sb+h).toFixed(2);txt=`${REGION.rate}% ${REGION.tax} on the subtotal = ${fmtMoney(h)} (bill total ${fmtMoney(tot)})`;apply=()=>{$('#rcX').value=h.toFixed(2);$('#rcT').value=tot.toFixed(2)}}
+    else{h=+(tt*rr/(1+rr)).toFixed(2);txt=`${REGION.rate}% ${REGION.tax} included in the bill total would be ${fmtMoney(h)}`;apply=()=>{$('#rcX').value=h.toFixed(2);$('#rcS').value=(tt-h).toFixed(2)}}
     const same=!isNaN(x)&&Math.abs(x-h)<=.05;b.style.display='block';b.textContent=txt+(same?' ✓':' · tap to use');b.onclick=()=>{apply();hstHint();mathCheck()}};
   const mathCheck=()=>{const n=id=>parseFloat(($('#'+id).value||'').replace(/[^0-9.]/g,'')),sb=n('rcS'),tx=n('rcX'),tt=n('rcT'),tp=n('rcG'),m=$('#rcMath');if(!m)return;
-    if(isNaN(sb)||isNaN(tx)){m.style.display='none';return}const want=+(sb+tx+(isNaN(tp)?0:tp)).toFixed(2),lab=isNaN(tp)||!tp?'Subtotal + tax':'Subtotal + tax + tip';
-    if(!isNaN(tt)&&Math.abs(want-tt)<=.02){m.style.display='block';m.style.color='var(--acc)';m.textContent=`✓ ${lab} = ${fmtMoney(want)}, matches the total`;m.onclick=null;return}
-    m.style.display='block';m.style.color='#d97706';m.style.cursor='pointer';m.textContent=`${lab} = ${fmtMoney(want)}${isNaN(tt)?'':`, but the total says ${fmtMoney(tt)}`}${!isNaN(tt)&&tt>want?(isNaN(tp)||!tp?' (add the tip?)':' (a fee?)'):''} · tap to use ${fmtMoney(want)}`;m.onclick=()=>{$('#rcT').value=want.toFixed(2);mathCheck();hstHint()}};
+    {const P=$('#rcPaid');if(P)P.textContent=isNaN(tt)?'–':fmtMoney(+(tt+(isNaN(tp)?0:tp)).toFixed(2))}
+    if(isNaN(sb)||isNaN(tx)){m.style.display='none';return}const want=+(sb+tx).toFixed(2);
+    if(!isNaN(tt)&&Math.abs(want-tt)<=.02){m.style.display='block';m.style.color='var(--acc)';m.style.cursor='';m.textContent=`✓ Subtotal + tax = ${fmtMoney(want)}, matches the bill total`;m.onclick=null;return}
+    m.style.display='block';m.style.color='#d97706';m.style.cursor='pointer';
+    // the total typed or read includes a tip: offer to split it out
+    if(!isNaN(tt)&&tt>want&&(isNaN(tp)||!tp)&&tt-want<=want*.4){const g=+(tt-want).toFixed(2);m.textContent=`Subtotal + tax = ${fmtMoney(want)}, but the total says ${fmtMoney(tt)}. Is ${fmtMoney(g)} a tip? · tap to move it to Tip`;m.onclick=()=>{$('#rcT').value=want.toFixed(2);$('#rcG').value=g.toFixed(2);mathCheck();hstHint()};return}
+    if(!isNaN(tt)&&!isNaN(tp)&&tp&&Math.abs(tt-tp-want)<=.02){m.textContent=`The bill total seems to include the tip · tap to use ${fmtMoney(want)} as the bill total`;m.onclick=()=>{$('#rcT').value=want.toFixed(2);mathCheck();hstHint()};return}
+    m.textContent=`Subtotal + tax = ${fmtMoney(want)}${isNaN(tt)?'':`, but the bill total says ${fmtMoney(tt)}`}${!isNaN(tt)&&tt>want?' (a fee?)':''} · tap to use ${fmtMoney(want)}`;m.onclick=()=>{$('#rcT').value=want.toFixed(2);mathCheck();hstHint()}};
   $('#rcRead').onclick=()=>readNow(true);
   {let prevC=$('#rcC').value;$('#rcC').addEventListener('change',e=>{if(e.target.value===NEWCAT)prevC=pickNewCat(e.target,prevC);else prevC=e.target.value})}
   $('#rcView').onclick=()=>viewReceipt(d);
@@ -2738,30 +2752,31 @@ function exportXlsx(listIn,byMonth,opts){
   if(!list.some(d=>d.receipt)){toast('No receipt details yet. Tap a receipt to fill them in first.',4500);return}
   const C=REGION.cur,pad=n=>String(n).padStart(3,'0'),safe=t=>String(t||'').replace(/[\\/:*?"<>|]+/g,' ').replace(/\s+/g,' ').trim().slice(0,60);
   const ref={},fileOf={};list.forEach((d,i)=>{ref[d.id]='R'+pad(i+1);const r=d.receipt||{};const mo=/^\d{4}-\d{2}/.test(r.date||'')?r.date.slice(0,7)+' '+new Date(+r.date.slice(0,4),+r.date.slice(5,7)-1,1).toLocaleDateString('en-CA',{month:'long'}):'No date';fileOf[d.id]=`Receipts/${mo}/${ref[d.id]} ${r.date||'no date'} ${safe(r.vendor||d.name)}.pdf`});
-  const H=['Receipt #','Date','Month','Store','Description','Category','Paid with',`Subtotal (${C})`,`Tax (${C})`,`Tip (${C})`,`Total (${C})`,'Folder','Receipt file'];
-  const COLS=[10,12,9,24,28,22,12,13,12,11,13,14,40],KEY={H:'subtotal',I:'tax',J:'tip',K:'total'};
+  const H=['Receipt #','Date','Month','Store','Description','Category','Paid with',`Subtotal (${C})`,`Tax (${C})`,`Bill total (${C})`,`Tip (${C})`,`Amount charged (${C})`,'Folder','Receipt file'];
+  const COLS=[10,12,9,24,28,22,12,13,12,13,11,16,14,40],KEY={H:'subtotal',I:'tax',J:'total',K:'tip',L:'charged'};
   const num=v=>{const x=parseFloat(v);return isNaN(x)?'':{v:+x.toFixed(2),t:'n',s:1}};
-  const val=(d,k)=>parseFloat((d.receipt||{})[k])||0;
+  const val=(d,k)=>k==='charged'?rcCharged(d.receipt):parseFloat((d.receipt||{})[k])||0;
   const fileCell=d=>opts.files?{v:`HYPERLINK("${fileOf[d.id].replace(/"/g,'')}","${fileOf[d.id].split('/').pop().replace(/"/g,'')}")`,t:'f',c:fileOf[d.id].split('/').pop(),s:6}:d.name;
-  const rowOf=d=>{const r=d.receipt||{};return[ref[d.id],/^\d{4}-\d{2}-\d{2}$/.test(r.date||'')?{v:r.date,t:'d'}:(r.date||''),(r.date||'').slice(0,7),r.vendor||'',r.note||'',r.category||'',r.payment||'',num(r.subtotal),num(r.tax),num(r.tip),num(r.total),d.folder,fileCell(d)]};
+  const rowOf=d=>{const r=d.receipt||{};return[ref[d.id],/^\d{4}-\d{2}-\d{2}$/.test(r.date||'')?{v:r.date,t:'d'}:(r.date||''),(r.date||'').slice(0,7),r.vendor||'',r.note||'',r.category||'',r.payment||'',num(r.subtotal),num(r.tax),num(r.total),num(r.tip),null,d.folder,fileCell(d)]};
   const tableSheet=(name,docs)=>{const rows=[H.map(h=>({v:h,s:2})),...docs.map(rowOf)],n=rows.length;
+    rows.forEach((row,k)=>{if(k&&row[11]===null){const d=docs[k-1],r=d.receipt||{};row[11]=r.total===''&&!r.tip||(r.total==null&&!r.tip)?'':{v:`IF(AND(J${k+1}="",K${k+1}=""),"",N(J${k+1})+N(K${k+1}))`,t:'f',s:1,c:rcCharged(r)}}});
     const sum=col=>({v:`SUM(${col}2:${col}${Math.max(2,n)})`,t:'f',s:3,c:+docs.reduce((a,d)=>a+val(d,KEY[col]),0).toFixed(2)});
-    rows.push([{v:'TOTAL',s:2},{v:'',s:2},{v:'',s:2},{v:`${docs.length} receipt${docs.length===1?'':'s'}`,s:2},{v:'',s:2},{v:'',s:2},{v:'',s:2},sum('H'),sum('I'),sum('J'),sum('K'),{v:'',s:2},{v:'',s:2}]);
+    rows.push([{v:'TOTAL',s:2},{v:'',s:2},{v:'',s:2},{v:`${docs.length} receipt${docs.length===1?'':'s'}`,s:2},{v:'',s:2},{v:'',s:2},{v:'',s:2},sum('H'),sum('I'),sum('J'),sum('K'),sum('L'),{v:'',s:2},{v:'',s:2}]);
     return{name,freeze:true,cols:COLS,rows,totalRow:rows.length}};
   const mName=m=>{if(!m)return 'No date';const[y,mo]=m.split('-');return new Date(+y,+mo-1,1).toLocaleDateString('en-CA',{month:'short',year:'numeric'}).replace('.','')};
   const months={};for(const d of list){const m=((d.receipt||{}).date||'').slice(0,7);(months[m]=months[m]||[]).push(d)}
   const mKeys=Object.keys(months).sort((a,b)=>(a||'9999').localeCompare(b||'9999'));
   const sheets=[],q=n=>`'${n.replace(/'/g,"''")}'`;
-  const sumRows=[[{v:'Totals by month',s:5}],['Month','Receipts',`Subtotal (${C})`,`Tax (${C})`,`Tip (${C})`,`Total (${C})`].map(h=>({v:h,s:2}))];
+  const sumRows=[[{v:'Totals by month',s:5}],['Month','Receipts',`Subtotal (${C})`,`Tax (${C})`,`Bill total (${C})`,`Tip (${C})`,`Amount charged (${C})`].map(h=>({v:h,s:2}))];
   const monthSheets=byMonth?mKeys.map(m=>tableSheet(mName(m),months[m])):[];
   mKeys.forEach((m,i)=>{const docs=months[m],tot=k=>+docs.reduce((a,d)=>a+val(d,k),0).toFixed(2);
-    if(byMonth){const sh=monthSheets[i],refc=c=>({v:`${q(sh.name)}!${c}${sh.totalRow}`,t:'f',s:1,c:tot(KEY[c])});sumRows.push([mName(m),docs.length,refc('H'),refc('I'),refc('J'),refc('K')])}
-    else sumRows.push([mName(m),docs.length,num(tot('subtotal')),num(tot('tax')),num(tot('tip')),num(tot('total'))])});
-  const last=sumRows.length,GK={C:'subtotal',D:'tax',E:'tip',F:'total'},gs=c=>({v:`SUM(${c}3:${c}${last})`,t:'f',s:3,c:+list.reduce((a,d)=>a+val(d,GK[c]),0).toFixed(2)});
-  sumRows.push([{v:'Grand total',s:2},{v:`SUM(B3:B${last})`,t:'f',s:2,c:list.length},gs('C'),gs('D'),gs('E'),gs('F')]);
-  const byC={};for(const d of list){const c=(d.receipt||{}).category||'Uncategorised';byC[c]=(byC[c]||0)+val(d,'total')}
-  sumRows.push([],[{v:'Totals by category',s:5}],[{v:'Category',s:2},{v:`Total (${C})`,s:2}]);Object.keys(byC).sort((a,b)=>byC[b]-byC[a]).forEach(c=>sumRows.push([c,num(byC[c])]));
-  sheets.push({name:'Summary',cols:[22,10,14,12,11,14],rows:sumRows});
+    if(byMonth){const sh=monthSheets[i],refc=c=>({v:`${q(sh.name)}!${c}${sh.totalRow}`,t:'f',s:1,c:tot(KEY[c])});sumRows.push([mName(m),docs.length,refc('H'),refc('I'),refc('J'),refc('K'),refc('L')])}
+    else sumRows.push([mName(m),docs.length,num(tot('subtotal')),num(tot('tax')),num(tot('total')),num(tot('tip')),num(tot('charged'))])});
+  const last=sumRows.length,GK={C:'subtotal',D:'tax',E:'total',F:'tip',G:'charged'},gs=c=>({v:`SUM(${c}3:${c}${last})`,t:'f',s:3,c:+list.reduce((a,d)=>a+val(d,GK[c]),0).toFixed(2)});
+  sumRows.push([{v:'Grand total',s:2},{v:`SUM(B3:B${last})`,t:'f',s:2,c:list.length},gs('C'),gs('D'),gs('E'),gs('F'),gs('G')]);
+  const byC={};for(const d of list){const c=(d.receipt||{}).category||'Uncategorised';byC[c]=(byC[c]||0)+val(d,'charged')}
+  sumRows.push([],[{v:'Totals by category',s:5}],[{v:'Category',s:2},{v:`Amount charged (${C})`,s:2}]);Object.keys(byC).sort((a,b)=>byC[b]-byC[a]).forEach(c=>sumRows.push([c,num(byC[c])]));
+  sheets.push({name:'Summary',cols:[22,10,14,12,14,11,18],rows:sumRows});
   sheets.push(...monthSheets);
   sheets.push(tableSheet(byMonth?'All receipts':'Receipts',list));
   let itemCount=0;
@@ -2772,7 +2787,7 @@ function exportXlsx(listIn,byMonth,opts){
       const sum=its.reduce((a,b)=>a+b.amount,0),sub=parseFloat(r.subtotal),ok=!isNaN(sub)&&Math.abs(sum-sub)<=.05;
       IR.push(['','','',{v:`Items total${isNaN(sub)?'':` (receipt subtotal ${sub.toFixed(2)})`}`,s:5},{v:+sum.toFixed(2),t:'n',s:3},{v:isNaN(sub)?'':ok?'✓ matches':'Check',s:5}]);IR.push([])}
     sheets.push({name:'Line items',freeze:true,cols:[10,12,24,44,14,12],rows:IR})}
-  const xbytes=buildXlsx(sheets),t=new Date(),stamp=`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`,base=`${LIB.folder||'Library'} ${stamp}`,tt=list.reduce((a,d)=>a+val(d,'total'),0);
+  const xbytes=buildXlsx(sheets),t=new Date(),stamp=`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`,base=`${LIB.folder||'Library'} ${stamp}`,tt=list.reduce((a,d)=>a+val(d,'charged'),0);
   const done=()=>toast(`Exported ${list.length} receipt${list.length>1?'s':''}${byMonth?` in ${mKeys.length} month tab${mKeys.length>1?'s':''}`:''}${opts.items?` · ${itemCount} line items`:''} · total ${fmtMoney(tt)}`,5000);
   if(!opts.files){offerDownload(base+'.xlsx',xbytes,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');done();return}
   (async()=>{busy('Packing receipts…');try{const files=[{name:base+'.xlsx',data:xbytes}];
@@ -2798,11 +2813,11 @@ function exportCSV(listIn){
   if(!list.length){toast('Nothing to export in this view');return}
   const withR=list.filter(d=>d.receipt);if(!withR.length){toast('No receipt details yet. Tap ⋯ → Receipt details on a receipt first.',4500);return}
   list.sort((a,b)=>((a.receipt&&a.receipt.date)||'9999').localeCompare((b.receipt&&b.receipt.date)||'9999')||a.created-b.created);
-  const rows=[['Receipt #','Date','Month','Store','Description','Category','Paid with',`Subtotal (${REGION.cur})`,`Tax (${REGION.cur})`,`Tip (${REGION.cur})`,`Total (${REGION.cur})`,'Folder','Document']];let tt=0,tx=0,tg=0;const months={};
-  let rn=0;for(const d of list){rn++;const r=d.receipt||{};const t=parseFloat(r.total)||0,x=parseFloat(r.tax)||0;tt+=t;tx+=x;tg+=parseFloat(r.tip)||0;const mo=(r.date||'').slice(0,7);if(mo)months[mo]=(months[mo]||0)+t;
-    const f2=v=>v===''||v==null||isNaN(parseFloat(v))?'':parseFloat(v).toFixed(2);rows.push(['R'+String(rn).padStart(3,'0'),r.date||'',mo,r.vendor||'',r.note||'',r.category||'',r.payment||'',f2(r.subtotal),f2(r.tax),f2(r.tip),f2(r.total),d.folder,d.name])}
-  rows.push([]);rows.push(['','','','','','','TOTAL',(tt-tx-tg).toFixed(2),tx.toFixed(2),tg.toFixed(2),tt.toFixed(2)]);
-  const mk=Object.keys(months).sort();if(mk.length){rows.push([]);rows.push(['Monthly totals']);rows.push(['Month','Total']);mk.forEach(m=>rows.push([m,months[m].toFixed(2)]))}
+  const rows=[['Receipt #','Date','Month','Store','Description','Category','Paid with',`Subtotal (${REGION.cur})`,`Tax (${REGION.cur})`,`Bill total (${REGION.cur})`,`Tip (${REGION.cur})`,`Amount charged (${REGION.cur})`,'Folder','Document']];let tt=0,tx=0,tg=0,tb=0,ts=0;const months={};
+  let rn=0;for(const d of list){rn++;const r=d.receipt||{};const t=rcCharged(r),x=parseFloat(r.tax)||0;tt+=t;tx+=x;tg+=parseFloat(r.tip)||0;tb+=parseFloat(r.total)||0;ts+=parseFloat(r.subtotal)||0;const mo=(r.date||'').slice(0,7);if(mo)months[mo]=(months[mo]||0)+t;
+    const f2=v=>v===''||v==null||isNaN(parseFloat(v))?'':parseFloat(v).toFixed(2);rows.push(['R'+String(rn).padStart(3,'0'),r.date||'',mo,r.vendor||'',r.note||'',r.category||'',r.payment||'',f2(r.subtotal),f2(r.tax),f2(r.total),f2(r.tip),r.total||r.tip?t.toFixed(2):'',d.folder,d.name])}
+  rows.push([]);rows.push(['','','','','','','TOTAL',ts.toFixed(2),tx.toFixed(2),tb.toFixed(2),tg.toFixed(2),tt.toFixed(2)]);
+  const mk=Object.keys(months).sort();if(mk.length){rows.push([]);rows.push(['Monthly totals']);rows.push(['Month',`Amount charged (${REGION.cur})`]);mk.forEach(m=>rows.push([m,months[m].toFixed(2)]))}
   const csv=rows.map(r=>r.map(csvCell).join(',')).join('\r\n');const t=new Date();
   offerDownload(`${LIB.folder||'Library'} ${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}.csv`,new TextEncoder().encode(csv),'text/csv');
   toast(`Exported ${list.length} row${list.length>1?'s':''} · total ${fmtMoney(tt)}`,4000);
@@ -2812,7 +2827,7 @@ $('#libCsv').onclick=()=>openExport();
 /* ---------------- in-app spreadsheet for receipts ---------------- */
 const SH={rows:[],sort:'date',dir:1,month:''};
 const PAYS=['','Visa','Mastercard','Amex','Debit','Cash','Apple Pay','Google Pay','Gift card','Cheque','E-transfer','Other'];
-const SHCOLS=[['date','Date'],['vendor','Store'],['note','Description'],['category','Category'],['payment','Paid with'],['subtotal','Subtotal'],['tax','Tax'],['tip','Tip'],['total','Total']];
+const SHCOLS=[['date','Date'],['vendor','Store'],['note','Description'],['category','Category'],['payment','Paid with'],['subtotal','Subtotal'],['tax','Tax'],['total','Bill total'],['tip','Tip'],['charged','Charged']];
 const money=v=>fmtMoney(v);
 function openSheet(){
   SH.rows=LIB.docs.filter(d=>!LIB.folder||d.folder===LIB.folder);
@@ -2821,8 +2836,8 @@ function openSheet(){
 }
 function shVisible(){
   let r=SH.rows.filter(d=>!SH.month||((d.receipt||{}).date||'').startsWith(SH.month));
-  const k=SH.sort,num=['tax','total','subtotal','tip'].includes(k);
-  r.sort((a,b)=>{const x=(a.receipt||{})[k]||'',y=(b.receipt||{})[k]||'';const c=num?(parseFloat(x)||0)-(parseFloat(y)||0):String(x).localeCompare(String(y));return c*SH.dir||a.created-b.created});
+  const k=SH.sort,num=['tax','total','subtotal','tip','charged'].includes(k);
+  r.sort((a,b)=>{const x=k==='charged'?rcCharged(a.receipt):(a.receipt||{})[k]||'',y=k==='charged'?rcCharged(b.receipt):(b.receipt||{})[k]||'';const c=num?(parseFloat(x)||0)-(parseFloat(y)||0):String(x).localeCompare(String(y));return c*SH.dir||a.created-b.created});
   return r;
 }
 const shIsList=()=>SH.view?SH.view==='list':innerWidth<760;
@@ -2835,19 +2850,19 @@ function renderSheet(){
   if(shIsList()){renderSheetList();return}
   const rows=shVisible(),cats=allCats(SH.rows.map(d=>(d.receipt||{}).category));
   const sel=(f,opts,v)=>`<select data-f="${f}">${opts.map(o=>`<option ${o===v?'selected':''}>${esc(o)}</option>`).join('')}</select>`;
-  $('#shTable').innerHTML=`<table class="xs"><thead><tr><th></th>${SHCOLS.map(([k,l])=>`<th data-k="${k}" class="${['tax','total','subtotal','tip'].includes(k)?'num':''}">${l}${SH.sort===k?(SH.dir>0?' ▲':' ▼'):''}</th>`).join('')}</tr></thead><tbody>
+  $('#shTable').innerHTML=`<table class="xs"><thead><tr><th></th>${SHCOLS.map(([k,l])=>`<th data-k="${k}" class="${['tax','total','subtotal','tip','charged'].includes(k)?'num':''}">${l}${SH.sort===k?(SH.dir>0?' ▲':' ▼'):''}</th>`).join('')}</tr></thead><tbody>
    ${rows.map(d=>{const r=d.receipt||{};return`<tr data-id="${d.id}"><td><button class="xth" data-open="${d.id}">${d.thumb?`<img src="${d.thumb}" alt="">`:'📄'}</button></td>
      <td><input type="date" data-f="date" value="${esc(r.date||'')}"></td><td><input data-f="vendor" value="${esc(r.vendor||'')}" placeholder="${esc(d.name)}"></td>
      <td><input data-f="note" value="${esc(r.note||'')}" placeholder="What was it for?"></td><td>${sel('category',['',...cats,NEWCAT],r.category||'')}</td><td>${sel('payment',PAYS,r.payment||'')}</td>
-     <td class="num"><input data-f="subtotal" inputmode="decimal" value="${esc(r.subtotal||'')}"></td><td class="num"><input data-f="tax" inputmode="decimal" value="${esc(r.tax||'')}"></td><td class="num"><input data-f="tip" inputmode="decimal" value="${esc(r.tip||'')}"></td><td class="num"><input data-f="total" inputmode="decimal" value="${esc(r.total||'')}"></td></tr>`}).join('')}
-   </tbody><tfoot><tr><td></td><td colspan="6" id="shCount"></td><td class="num" id="shTax"></td><td class="num" id="shTip"></td><td class="num" id="shTot"></td></tr></tfoot></table>`;
+     <td class="num"><input data-f="subtotal" inputmode="decimal" value="${esc(r.subtotal||'')}"></td><td class="num"><input data-f="tax" inputmode="decimal" value="${esc(r.tax||'')}"></td><td class="num"><input data-f="total" inputmode="decimal" value="${esc(r.total||'')}"></td><td class="num"><input data-f="tip" inputmode="decimal" value="${esc(r.tip||'')}"></td><td class="num" data-charged="${d.id}" style="font-weight:600;padding:0 8px">${r.total||r.tip?money(rcCharged(r)):''}</td></tr>`}).join('')}
+   </tbody><tfoot><tr><td></td><td colspan="6" id="shCount"></td><td class="num" id="shTax"></td><td class="num" id="shBill"></td><td class="num" id="shTip"></td><td class="num" id="shTot"></td></tr></tfoot></table>`;
   shTotals();
 }
 function shTotals(){
   const rows=shVisible();let t=0,x=0,g=0;const byM={},byC={};
-  for(const d of rows){const r=d.receipt||{},v=parseFloat(r.total)||0;t+=v;x+=parseFloat(r.tax)||0;g+=parseFloat(r.tip)||0;const m=(r.date||'').slice(0,7)||'No date';byM[m]=(byM[m]||0)+v;const c=r.category||'Uncategorised';byC[c]=(byC[c]||0)+v}
-  if($('#shCount')){$('#shCount').textContent=`${rows.length} item${rows.length===1?'':'s'} · Total`;$('#shTax').textContent=money(x);$('#shTip').textContent=money(g);$('#shTot').textContent=money(t)}
-  $('#shBar').innerHTML=`<div><span>${rows.length} receipt${rows.length===1?'':'s'}</span></div><div><span>Tax</span><b>${money(x)}</b></div><div><span>Total</span><b>${money(t)}</b></div>`;
+  let bill=0;for(const d of rows){const r=d.receipt||{},v=rcCharged(r);t+=v;bill+=parseFloat(r.total)||0;x+=parseFloat(r.tax)||0;g+=parseFloat(r.tip)||0;{const c=document.querySelector(`[data-charged="${d.id}"]`);if(c)c.textContent=r.total||r.tip?money(v):''}const m=(r.date||'').slice(0,7)||'No date';byM[m]=(byM[m]||0)+v;const c=r.category||'Uncategorised';byC[c]=(byC[c]||0)+v}
+  if($('#shCount')){$('#shCount').textContent=`${rows.length} item${rows.length===1?'':'s'} · Total`;$('#shTax').textContent=money(x);if($('#shBill'))$('#shBill').textContent=money(bill);$('#shTip').textContent=money(g);$('#shTot').textContent=money(t)}
+  $('#shBar').innerHTML=`<div><span>${rows.length} receipt${rows.length===1?'':'s'}</span></div><div><span>Tax</span><b>${money(x)}</b></div>${g?`<div><span>Tips</span><b>${money(g)}</b></div>`:''}<div><span>Charged</span><b>${money(t)}</b></div>`;
   const tbl=(title,obj,sortKeys)=>{const ks=sortKeys?Object.keys(obj).sort():Object.keys(obj).sort((a,b)=>obj[b]-obj[a]);return`<div class="xsum"><b>${title}</b>${ks.map(k=>`<div><span>${esc(k)}</span><span>${money(obj[k])}</span></div>`).join('')}</div>`};
   $('#shSummary').innerHTML=rows.length?tbl('By month',byM,true)+tbl('By category',byC,false):'';
 }
@@ -2873,7 +2888,7 @@ function renderSheetList(){
   $('#shTable').innerHTML=`<div class="xl">${rows.map(d=>{const r=d.receipt||{},missing=!r.total;return`<div class="xr" data-row="${d.id}">
     <button class="xth" data-open="${d.id}">${d.thumb?`<img src="${d.thumb}" alt="">`:'📄'}</button>
     <div class="xm"><b>${esc(r.vendor||d.name)}</b><span>${missing?'<em>Needs details · tap to fill in</em>':esc([dt(r.date),r.category,r.payment].filter(Boolean).join(' · '))}</span>${r.note?`<span>${esc(r.note)}</span>`:''}</div>
-    <div class="xa">${missing?'':`<b>${money(r.total)}</b>${r.tax?`<span>${esc(REGION.tax)} ${money(r.tax)}</span>`:''}`}</div></div>`}).join('')}</div>`;
+    <div class="xa">${missing?'':`<b>${money(rcCharged(r))}</b>${+r.tip?`<span>incl. tip ${money(r.tip)}</span>`:''}${r.tax?`<span>${esc(REGION.tax)} ${money(r.tax)}</span>`:''}`}</div></div>`}).join('')}</div>`;
   shTotals();
 }
 async function fillMissing(){
@@ -2918,7 +2933,9 @@ function openTheme(){const cur=document.body.dataset.theme;
   openModal(`<h3>Theme</h3><div style="display:grid;gap:10px">${THEMES.map(([k,l,c])=>`<button class="btn" data-th="${k}" style="display:flex;align-items:center;gap:12px;height:54px;justify-content:flex-start;${k===cur?'box-shadow:0 0 0 2px '+c+';':''}"><span style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,${c},#0006)"></span><b style="flex:1;text-align:left">${l}</b>${k===cur?'✓':''}</button>`).join('')}</div><label class="row" style="gap:10px;margin:14px 2px 0;align-items:center"><input type="checkbox" id="thCi" ${document.body.classList.contains('ci')?'checked':''} style="width:20px;height:20px;accent-color:var(--acc)"><span><b>Colourful icons</b><br><span class="small">Turn off for the plain look</span></span></label><div class="btns"><button class="btn" data-x>Done</button></div>`);
   $('#thCi').onchange=e=>{lsSet('folio.ci',e.target.checked?'1':'0');document.body.classList.toggle('ci',e.target.checked)};
   document.querySelectorAll('[data-th]').forEach(b=>b.onclick=()=>{lsSet('folio.theme',b.dataset.th);applyTheme(b.dataset.th);closeModal();openTheme()})}
-applyTheme(lsGet('folio.theme')||'indigo');{const a=document.querySelector('#homeAbout');if(a)a.onclick=e=>{e.preventDefault();openAbout()}}document.body.classList.toggle('ci',lsGet('folio.ci')!=='0');
+applyTheme(lsGet('folio.theme')||'indigo');
+setTimeout(async()=>{if(lsGet('folio.mig.tip')==='1')return;try{let n=0;for(const d of await libAll()){const r=d.receipt;if(!r||!(+r.tip>0)||!r.total||!r.subtotal||!r.tax)continue;
+  if(Math.abs(+r.total-(+r.subtotal+ +r.tax+ +r.tip))<=.03){r.total=(+r.total- +r.tip).toFixed(2);await libPut(d);n++}}lsSet('folio.mig.tip','1')}catch(e){console.warn(e)}},1500);{const a=document.querySelector('#homeAbout');if(a)a.onclick=e=>{e.preventDefault();openAbout()}}document.body.classList.toggle('ci',lsGet('folio.ci')!=='0');
 /* ---------------- init ---------------- */
 function applyRcSetting(){const off=lsGet('folio.receipts')==='0';document.body.classList.toggle('norc',off);const l=$('#mRcL');if(l)l.textContent=off?'Show Receipts & expenses':'Hide Receipts & expenses'}
 applyRcSetting();
