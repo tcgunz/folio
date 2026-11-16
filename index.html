@@ -373,7 +373,7 @@ body.ci #menu [data-m=region] .ic{color:var(--c-sky)}body.ci #menu [data-m=rctog
     <button data-m="rctoggle" id="mRc"><span class="ic" data-i="grid"></span><span id="mRcL">Hide Receipts &amp; expenses</span></button>
     <hr>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 60<br>© 2026 Tommy Chieng. All rights reserved.</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 61<br>© 2026 Tommy Chieng. All rights reserved.</div>
   </div>
 </div>
 
@@ -1435,6 +1435,9 @@ function cleanEdges(im){
   ls.sort((a,b)=>a-b);const cut=ls[Math.floor(ls.length*.6)];let pr=0,pg=0,pb=0,pn=0;
   for(let y=(h*.2)|0;y<h*.8;y+=st)for(let x=(w*.2)|0;x<w*.8;x+=st){const j=(y*w+x)*4;if(d[j]+d[j+1]+d[j+2]>=cut){pr+=d[j];pg+=d[j+1];pb+=d[j+2];pn++}}
   pr/=pn;pg/=pn;pb/=pn;
+  // only for paper-like pages (light and close to white/cream). Coloured covers, photos and dark pages are left alone,
+  // otherwise darker parts of the design near the edge get painted over.
+  if((pr+pg+pb)/3<150||Math.max(pr,pg,pb)-Math.min(pr,pg,pb)>60)return 0;
   const off=(x,y)=>{const j=(y*w+x)*4,r=d[j]-pr,g=d[j+1]-pg,b=d[j+2]-pb;return r*r+g*g+b*b>70*70};
   const median=(a,win)=>{const out=new Int32Array(a.length),half=win>>1,buf=[];for(let i=0;i<a.length;i++){buf.length=0;for(let k=Math.max(0,i-half);k<=Math.min(a.length-1,i+half);k++)buf.push(a[k]);buf.sort((x,y)=>x-y);out[i]=buf[buf.length>>1]}return out};
   let painted=0;
