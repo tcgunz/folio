@@ -1,6 +1,8 @@
 {
+ "id": "./",
  "name": "Folio — PDF Editor & Scanner",
  "short_name": "Folio",
+ "description": "PDF reader and editor, document scanner, and receipt and expense tracker.",
  "start_url": "./",
  "scope": "./",
  "display": "standalone",
@@ -19,5 +21,11 @@
    "type": "image/png",
    "purpose": "any maskable"
   }
- ]
+ ],
+ "categories": [
+  "productivity",
+  "business",
+  "utilities"
+ ],
+ "orientation": "portrait"
 }
