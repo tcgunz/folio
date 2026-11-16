@@ -374,7 +374,7 @@ body.ci #menu [data-m=region] .ic{color:var(--c-sky)}body.ci #menu [data-m=rctog
     <hr>
     <button data-m="about"><span class="ic" data-i="info"></span>About, terms &amp; licences</button>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-16 · 67<br>© 2026 Tommy Chieng. All rights reserved.</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-16 · 68<br>© 2026 Tommy Chieng. All rights reserved.</div>
   </div>
 </div>
 
@@ -2086,10 +2086,18 @@ function openScanSave(mode){
    <div class="chips" id="ssLook" style="padding:0;flex-wrap:wrap">${[['keep','As shown'],['auto','Colour'],['gray','Grayscale'],['bw','Black & white']].map(([k,l])=>`<button data-l="${k}" class="btn" style="height:36px">${l}</button>`).join('')}</div>
    <div id="ssPrevBox" style="margin-top:12px;background:#eef0f3;border-radius:12px;height:230px;display:grid;place-items:center;overflow:hidden;cursor:zoom-in;position:relative"><img id="ssPrev" alt="Preview" style="max-width:100%;max-height:220px;box-shadow:0 2px 10px rgba(0,0,0,.2)"><span style="position:absolute;right:8px;bottom:8px;background:rgba(21,24,29,.75);color:#fff;font-size:12px;padding:5px 10px;border-radius:14px;display:flex;align-items:center;gap:5px">${icon('plus')}Tap to zoom</span></div>
    <p class="small" style="margin:6px 0 0;text-align:center" id="ssPrevL"></p>
+   ${mode==='save'&&SC.pages.length>1?`<div id="ssSplitBox"><p class="small" style="margin:14px 0 6px"><b>These ${SC.pages.length} pages are…</b></p>
+   <div style="display:grid;gap:6px" id="ssSplit">
+    <button class="btn" data-sp="1" style="justify-content:flex-start;text-align:left;height:auto;padding:8px 12px;display:block"><b>Separate receipts</b><br><span class="small">One receipt per page. Each is read and gets its own row.</span></button>
+    <button class="btn" data-sp="0" style="justify-content:flex-start;text-align:left;height:auto;padding:8px 12px;display:block"><b>One receipt, several pages</b><br><span class="small">For a long receipt photographed in parts.</span></button>
+   </div></div>`:''}
    <label class="row" style="gap:10px;align-items:flex-start;margin-top:16px"><input type="checkbox" id="ssOcr" ${ocr?'checked':''} style="margin-top:3px;width:18px;height:18px;accent-color:var(--acc)"><span><b>Make text readable &amp; editable</b><br><span class="small">Recognises the words so you can search, copy, select and edit them. Needs internet and takes a few seconds per page.</span></span></label>
    <div class="btns"><button class="btn" data-x>Cancel</button><button class="btn pri" id="ssGo">${mode==='edit'?'Open':'Save PDF'}</button></div>`);
   folderPickerWire();
   const isRc=()=>{const f=$('#fpSel')?folderPickerValue():'';return f?isReceiptFolder(f):SC.mode==='receipt'};
+  let split=true;const spBox=$('#ssSplitBox');
+  const tsp=()=>{if(!spBox)return;spBox.style.display=isRc()?'':'none';m.querySelectorAll('#ssSplit [data-sp]').forEach(b=>{const on=(b.dataset.sp==='1')===split;b.style.background=on?'var(--acc)':'#fff';b.style.color=on?'#fff':'';b.style.borderColor=on?'var(--acc)':''})};
+  m.querySelectorAll('#ssSplit [data-sp]').forEach(b=>b.onclick=()=>{split=b.dataset.sp==='1';tsp()});{const fs0=$('#fpSel');if(fs0)fs0.addEventListener('change',tsp)}tsp();
   const qDef=()=>isRc()?(lsGet('folio.q.rc')||'high'):(lsGet('folio.q.doc')||'std');let qual=qDef(),qTouched=false;const QD={small:'Fast to send · about 150 DPI on a letter page (more on receipts)',std:'Sharp and readable · about 230 DPI on a letter page, small print on receipts stays clear',high:'Full camera detail for the finest print · largest files'};
   const tq=()=>{m.querySelectorAll('#ssQ button').forEach(b=>{const on=b.dataset.q===qual;b.style.background=on?'var(--acc)':'#fff';b.style.color=on?'#fff':'';b.style.borderColor=on?'var(--acc)':''});$('#ssQL').textContent=QD[qual]};tq();
   {const NM={small:'Small',std:'Standard',high:'High'};m.querySelectorAll('#ssQ button').forEach(b=>b.textContent=NM[b.dataset.q]+' · …');
@@ -2118,8 +2126,10 @@ function openScanSave(mode){
     if(mode==='save'&&!folder&&!wantDl){toast('Choose a folder or tick download');return}
     if(mode==='save'){lsSet('folio.dl.scan',wantDl?'1':'0');if(folder&&!isReceiptFolder(folder))lsSet('folio.lastFolder.scan',folder)}
     ocr=$('#ssOcr').checked;lsSet('folio.ocr',ocr?'1':'0');if(isReceiptFolder(folder))ocr=true;closeModal();
+    const splitNow=mode==='save'&&folder&&isReceiptFolder(folder)&&SC.pages.length>1&&split;
     let bytes;try{bytes=await buildScanPdf(look,ocr,qual)}catch(e){console.error(e);unbusy();toast('Could not build the PDF: '+(e.message||e),4500);return}
     unbusy();
+    if(splitNow){await saveSplitReceipts(bytes,name,folder,wantDl);return}
     const mb=bytes.length/1048576,sz=mb>=1?mb.toFixed(1)+' MB':Math.max(1,Math.round(bytes.length/1024))+' KB';
     if(mode==='save'){let newId=null;if(folder){busy('Saving to Library…');try{newId=await libSave(name,folder,bytes);toast(`Saved to ${folder} · ${sz}`)}catch(e){console.error(e);toast('Could not save to Library: '+(e.message||e),4500)}unbusy()}if(wantDl)offerDownload(name,bytes);
       if(newId||wantDl){SC.pages=[];renderScan();if(!(newId&&isReceiptFolder(folder)))toast(`${newId?`Saved to ${folder} · ${sz}`:'Downloaded'}. Ready for the next scan.`,3500)}
@@ -2127,9 +2137,37 @@ function openScanSave(mode){
     else{busy('Opening in editor…');try{const append=S.pages.length>0;await addBytesAsDoc(bytes,name,append);SC.pages=[];renderScan();$('#scan').classList.remove('on');toast(append?'Scanned pages added to your document':ocr?'Scan opened. Use Edit text to change any words.':'Scan opened in the editor',4000)}catch(e){console.error(e);toast('Could not open the scan')}unbusy()}
   };
 }
-async function buildScanPdf(look,ocr,qual){
-  const n=SC.pages.length,outs=[];
-  for(let i=0;i<n;i++){const p=SC.pages[i];if(look==='keep'||look===p.filter)outs.push(p.out);else{busy(`Preparing page ${i+1} of ${n}…`);await tick();outs.push(await processScan(p,look))}}
+/* several receipts scanned together: save each page as its own receipt, read it, then show a review list */
+async function saveSplitReceipts(bytes,name,folder,wantDl){
+  const{PDFDocument}=PDFLib,src=await PDFDocument.load(bytes),n=src.getPageCount(),base=name.replace(/\.pdf$/i,''),ids=[];
+  try{for(let i=0;i<n;i++){busy(`Saving receipt ${i+1} of ${n}…`);await tick();
+      const d=await PDFDocument.create(),[pg]=await d.copyPages(src,[i]);d.addPage(pg);const by=await d.save();
+      const id=await libSave(`${base} (${i+1})`,folder,by);const doc=await libGet(id);
+      const r=readReceipt(doc.text||'');doc.receipt={vendor:'',date:'',subtotal:'',total:'',tax:'',tip:'',payment:'',category:'',note:''};
+      for(const k of['vendor','date','subtotal','total','tax','tip','payment','category'])if(r[k])doc.receipt[k]=r[k];
+      const mem=vcatGet(doc.receipt.vendor);if(mem)doc.receipt.category=mem;
+      if(!doc.receipt.vendor&&!doc.receipt.total&&!doc.receipt.date)delete doc.receipt;
+      else doc.name=[doc.receipt.vendor||'Receipt',doc.receipt.date].filter(Boolean).join(' ');
+      await libPut(doc);ids.push(id);if(wantDl)offerDownload(doc.name+'.pdf',by)}}
+  catch(e){console.error(e);unbusy();toast('Could not save every receipt: '+(e.message||e),4500)}
+  unbusy();SC.pages=[];renderScan();if(ids.length)reviewReceipts(ids);
+}
+async function reviewReceipts(ids){
+  const docs=[];for(const id of ids){const d=await libGet(id);if(d)docs.push(d)}if(!docs.length)return;
+  const need=docs.filter(d=>!d.receipt||!d.receipt.total||!d.receipt.date||!d.receipt.vendor).length;
+  openModal(`<h3>${docs.length} receipts saved</h3><p class="small" style="margin-top:-6px">${need?`${need} need${need>1?'':'s'} a quick check. Tap a receipt to fill in or fix its details.`:'All read. Tap any receipt to check it.'}</p>
+   <div style="max-height:56vh;overflow:auto;margin:6px -4px 0">${docs.map((d,i)=>{const r=d.receipt||{},miss=!r.total||!r.date||!r.vendor;
+     return `<button class="btn" data-rv="${i}" style="display:flex;gap:10px;align-items:center;width:100%;height:auto;padding:8px;margin:0 0 6px;text-align:left;justify-content:flex-start${miss?';border-color:#f59e0b':''}">
+      ${d.thumb?`<img src="${d.thumb}" alt="" style="width:40px;height:52px;object-fit:cover;border-radius:6px;flex:none;background:#eee">`:''}
+      <span style="flex:1;min-width:0"><b style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.vendor||'Store not read')}</b><span class="small">${esc(r.date||'No date')}${r.category?' · '+esc(r.category):''}</span></span>
+      <b style="flex:none">${r.total?esc(fmtMoney(+r.total)):'<span style="color:#d97706">Check</span>'}</b></button>`}).join('')}</div>
+   <div class="btns"><button class="btn pri" data-x>Done</button></div>`);
+  document.querySelectorAll('#modal [data-rv]').forEach(b=>b.onclick=()=>{const d=docs[+b.dataset.rv];closeModal();setTimeout(async()=>{const fresh=await libGet(d.id);openReceiptDetails(fresh||d,false,()=>reviewReceipts(ids))},250)});
+  if($('#lib').classList.contains('on'))renderLib();
+}
+async function buildScanPdf(look,ocr,qual,P){
+  P=P||SC.pages;const n=P.length,outs=[];
+  for(let i=0;i<n;i++){const p=P[i];if(look==='keep'||look===p.filter)outs.push(p.out);else{busy(`Preparing page ${i+1} of ${n}…`);await tick();outs.push(await processScan(p,look))}}
   let words=null,worker=null;
   if(ocr){busy('Loading the text reader…');try{worker=await ocrWorker(pr=>{$('#busyMsg').textContent=`Reading text on page ${cur} of ${n}… ${Math.round(pr*100)}%`})}catch(e){toast("The text reader couldn't load, so the PDF was saved without editable text.",5000)}}
   let cur=0;
@@ -2587,7 +2625,7 @@ async function ocrDocText(d,onProg){
   finally{try{await worker.terminate()}catch(e){}try{pdf.destroy()}catch(e){}}
   return out.trim();
 }
-function openReceiptDetails(d,isNew){
+function openReceiptDetails(d,isNew,after){
   const auto=d.receipt?null:readReceipt(d.text||'');const r=Object.assign({vendor:'',date:'',subtotal:'',total:'',tax:'',tip:'',payment:'',category:'',note:''},auto||{},d.receipt||{});
   {const mem=vcatGet(r.vendor);if(mem&&!(d.receipt&&d.receipt.category))r.category=mem}
   const noText=!d.text||d.text.length<8;const cats=allCats([r.category]);
@@ -2605,6 +2643,7 @@ function openReceiptDetails(d,isNew){
    ${inp('rcN','Description (what it was for)',r.note)}
    <button class="link small" id="rcTxtB" style="margin:2px 0 6px">See the text Folio read</button><textarea id="rcTxt" readonly rows="8" style="display:none;font-size:12px;margin-bottom:8px"></textarea>
    <div class="btns"><button class="btn" data-x>${isNew?'Skip':'Cancel'}</button><button class="btn pri" id="rcOk">Save details</button></div>`);
+  if(after){const x=document.querySelector('#modal [data-x]');if(x)x.addEventListener('click',()=>setTimeout(after,250))}
   const setF=(id,v,force)=>{const el=$('#'+id);if(el&&v&&(force||!el.value))el.value=v};
   const fill=(rr,force)=>{setF('rcV',rr.vendor,force);setF('rcD',rr.date,force);setF('rcS',rr.subtotal,force);setF('rcT',rr.total,force);setF('rcX',rr.tax,force);setF('rcG',rr.tip,force);
     if(rr.payment&&(force||!$('#rcP').value))$('#rcP').value=rr.payment;const c=vcatGet($('#rcV').value)||rr.category;if(c&&!$('#rcC').value){const s=$('#rcC');if(![...s.options].some(o=>o.value===c))s.add(new Option(c,c));s.value=c}};
@@ -2641,7 +2680,7 @@ function openReceiptDetails(d,isNew){
   $('#rcOk').onclick=async()=>{
     d.receipt={vendor:$('#rcV').value.trim(),date:$('#rcD').value,subtotal:num($('#rcS').value),total:num($('#rcT').value),tip:num($('#rcG').value),tax:num($('#rcX').value),payment:$('#rcP').value,category:$('#rcC').value===NEWCAT?'':$('#rcC').value,note:$('#rcN').value.trim()};
     vcatSet(d.receipt.vendor,d.receipt.category);
-    try{await libPut(d);closeModal();toast($('#scan').classList.contains('on')&&!SC.pages.length?'Receipt saved. Ready for the next one.':'Receipt details saved');if($('#sheet').classList.contains('on'))renderSheet();else if($('#lib').classList.contains('on'))renderLib()}catch(e){toast('Could not save: '+(e.message||e))}
+    try{await libPut(d);closeModal();if(after){setTimeout(after,250);return}toast($('#scan').classList.contains('on')&&!SC.pages.length?'Receipt saved. Ready for the next one.':'Receipt details saved');if($('#sheet').classList.contains('on'))renderSheet();else if($('#lib').classList.contains('on'))renderLib()}catch(e){toast('Could not save: '+(e.message||e))}
   };
 }
 /* ---------------- Excel (.xlsx) writer ---------------- */
