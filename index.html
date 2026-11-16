@@ -374,7 +374,7 @@ body.ci #menu [data-m=region] .ic{color:var(--c-sky)}body.ci #menu [data-m=rctog
     <hr>
     <button data-m="about"><span class="ic" data-i="info"></span>About, terms &amp; licences</button>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-16 · 65<br>© 2026 Tommy Chieng. All rights reserved.</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-16 · 66<br>© 2026 Tommy Chieng. All rights reserved.</div>
   </div>
 </div>
 
@@ -1134,22 +1134,204 @@ function applyForm(doc,src){
     try{form.flatten()}catch(e){console.warn('flatten',e)}
   }catch(e){console.warn(e)}
 }
-async function exportPdf(){
+/* ================= True redaction =================
+   Removes whatever is hidden under white-out (and under Edit-text covers) from the saved PDF,
+   instead of only painting over it:
+   - text: the glyphs under a box are deleted from the page's own text, with spacing kept so
+     nothing else on the line moves
+   - scanned pictures (JPEG): the box is painted into the picture itself
+   Afterwards the saved file is re-read; any page that still has text under a box (or anything
+   that couldn't be handled) is turned into a picture, so nothing hidden can survive. */
+const RD={
+  ws:c=>c===32||c===10||c===13||c===9||c===12||c===0,
+  delim:c=>c===40||c===41||c===60||c===62||c===91||c===93||c===123||c===125||c===47||c===37,
+  mul:(a,b)=>[a[0]*b[0]+a[1]*b[2],a[0]*b[1]+a[1]*b[3],a[2]*b[0]+a[3]*b[2],a[2]*b[1]+a[3]*b[3],a[4]*b[0]+a[5]*b[2]+b[4],a[4]*b[1]+a[5]*b[3]+b[5]],
+  ap:(m,x,y)=>[m[0]*x+m[2]*y+m[4],m[1]*x+m[3]*y+m[5]],
+  inside:(rs,x,y)=>rs.some(r=>x>r[0]&&x<r[2]&&y>r[1]&&y<r[3]),
+  hits:(rs,b)=>rs.some(r=>b[0]<r[2]&&b[2]>r[0]&&b[1]<r[3]&&b[3]>r[1]),
+  bbox(m){const p=[RD.ap(m,0,0),RD.ap(m,1,0),RD.ap(m,0,1),RD.ap(m,1,1)];return[Math.min(...p.map(q=>q[0])),Math.min(...p.map(q=>q[1])),Math.max(...p.map(q=>q[0])),Math.max(...p.map(q=>q[1]))]},
+  /* content-stream tokenizer: returns operations {op,args,s,e} with byte positions */
+  parse(src){
+    const ops=[];let i=0,n=src.length,args=[],st=-1;const stack=[];
+    const push=v=>{if(stack.length)stack[stack.length-1].push(v);else{if(st<0)st=v.s;args.push(v)}};
+    while(i<n){const c=src.charCodeAt(i);
+      if(RD.ws(c)){i++;continue}
+      if(c===37){while(i<n&&src[i]!=='\n'&&src[i]!=='\r')i++;continue}
+      const s=i;
+      if(c===40){let d=1,out='';i++;while(i<n&&d>0){const ch=src[i];
+          if(ch==='\\'){const x=src[i+1];i+=2;
+            if(x==='n')out+='\n';else if(x==='r')out+='\r';else if(x==='t')out+='\t';else if(x==='b')out+='\b';else if(x==='f')out+='\f';
+            else if(x==='\r'){if(src[i]==='\n')i++}else if(x==='\n'){}
+            else if(x>='0'&&x<='7'){let o=x;while(o.length<3&&src[i]>='0'&&src[i]<='7')o+=src[i++];out+=String.fromCharCode(parseInt(o,8)&255)}
+            else out+=x;continue}
+          if(ch==='(')d++;else if(ch===')'){d--;if(!d){i++;break}}out+=ch;i++}
+        push({t:'s',v:out,s,e:i});continue}
+      if(c===60&&src[i+1]!=='<'){const j=src.indexOf('>',i);let h=src.slice(i+1,j).replace(/[^0-9a-fA-F]/g,'');if(h.length%2)h+='0';let out='';for(let k=0;k<h.length;k+=2)out+=String.fromCharCode(parseInt(h.substr(k,2),16));i=j+1;push({t:'s',v:out,s,e:i});continue}
+      if(c===60){stack.push(Object.assign([],{s,d:1}));i+=2;continue}
+      if(c===62&&src[i+1]==='>'){const a=stack.pop();i+=2;push({t:'d',v:a,s:a.s,e:i});continue}
+      if(c===91){stack.push(Object.assign([],{s}));i++;continue}
+      if(c===93){const a=stack.pop();i++;if(!a)continue;push({t:'a',v:a,s:a.s,e:i});continue}
+      if(c===47){i++;while(i<n&&!RD.ws(src.charCodeAt(i))&&!RD.delim(src.charCodeAt(i)))i++;push({t:'n',v:src.slice(s+1,i),s,e:i});continue}
+      while(i<n&&!RD.ws(src.charCodeAt(i))&&!RD.delim(src.charCodeAt(i)))i++;if(i===s){i++;continue}
+      const w=src.slice(s,i);
+      if(/^[+-]?(\d+\.?\d*|\.\d+)$/.test(w)){push({t:'#',v:parseFloat(w),s,e:i});continue}
+      if(w==='true'||w==='false'||w==='null'){push({t:'k',v:w,s,e:i});continue}
+      if(stack.length){continue}
+      if(w==='ID'){ // inline image data: skip binary until EI
+        let j=i+1,m;const re=/[\s\0]EI(?=[\s\0]|$)/g;re.lastIndex=j;m=re.exec(src);const end=m?m.index+3:n;
+        ops.push({op:'BI',args:args.slice(),s:st<0?s:st,e:end,img:true});args=[];st=-1;i=end;continue}
+      ops.push({op:w,args,s:st<0?s:st,e:i});args=[];st=-1}
+    return ops},
+  /* font widths in 1/1000 em for one font dictionary */
+  fontInfo(fd,ctx,std){
+    const L=PDFLib,get=(d,k)=>{const v=d.get(L.PDFName.of(k));return v instanceof L.PDFRef?ctx.lookup(v):v},num=v=>v&&v.asNumber?v.asNumber():v&&v.value?v.value():0;
+    const sub=get(fd,'Subtype'),stype=sub?sub.decodeText?sub.decodeText():String(sub).replace('/',''):'';
+    const base=String(get(fd,'BaseFont')||'').replace(/^\//,'').replace(/^[A-Z]{6}\+/,'');
+    if(stype==='Type3')return{bad:true};
+    if(stype==='Type0'){
+      const enc=String(get(fd,'Encoding')||'');if(!/Identity-[HV]/.test(enc))return{bad:true};
+      const dsc=get(fd,'DescendantFonts'),df=dsc&&(dsc.get(0) instanceof L.PDFRef?ctx.lookup(dsc.get(0)):dsc.get(0));if(!df)return{bad:true};
+      const dw=num(get(df,'DW'))||1000,W=get(df,'W'),map=new Map();
+      if(W){const a=W.asArray().map(x=>x instanceof L.PDFRef?ctx.lookup(x):x);for(let k=0;k<a.length;){const c0=num(a[k]);
+          if(a[k+1] instanceof L.PDFArray){a[k+1].asArray().forEach((w,j)=>map.set(c0+j,num(w instanceof L.PDFRef?ctx.lookup(w):w)));k+=2}
+          else{const c1=num(a[k+1]),w=num(a[k+2]);for(let c=c0;c<=c1&&c-c0<70000;c++)map.set(c,w);k+=3}}}
+      return{two:true,w:c=>map.has(c)?map.get(c):dw}}
+    const fc=num(get(fd,'FirstChar')),Wd=get(fd,'Widths'),desc=get(fd,'FontDescriptor'),miss=desc?num(get(desc,'MissingWidth')):0;
+    if(Wd){const a=Wd.asArray().map(x=>num(x instanceof L.PDFRef?ctx.lookup(x):x));return{w:c=>{const v=a[c-fc];return v!=null?v:(miss||500)}}}
+    const S=std(base);if(S)return{w:c=>{try{return S.widthOfTextAtSize(String.fromCharCode(c),1000)}catch(e){return 500}}};
+    return{w:()=>miss||500,approx:true}},
+  enc:s=>{let h='';for(let k=0;k<s.length;k++)h+=s.charCodeAt(k).toString(16).padStart(2,'0');return '<'+h+'>'},
+  /* remove text under the boxes on one pdf-lib page; returns {changed, flag} — flag means "can't be sure, use a picture" */
+  async page(page,rects,doc,std){
+    const L=PDFLib,ctx=doc.context;let flag=false,changed=false;
+    const node=page.node,cRef=node.get(L.PDFName.of('Contents'));if(!cRef)return{changed,flag};
+    let cs=cRef instanceof L.PDFRef?ctx.lookup(cRef):cRef;const list=cs instanceof L.PDFArray?cs.asArray().map(r=>r instanceof L.PDFRef?ctx.lookup(r):r):[cs];
+    let src='';for(const st of list){let b;try{b=typeof st.getUnencodedContents==='function'?st.getUnencodedContents():L.decodePDFRawStream(st).decode()}catch(e){return{changed,flag:true}}let t='';for(let k=0;k<b.length;k+=8192)t+=String.fromCharCode.apply(null,b.subarray(k,k+8192));src+=t+'\n'}
+    const ops=RD.parse(src);
+    const res=node.Resources(),fonts=res&&res.lookup(L.PDFName.of('Font')),xobjs=res&&res.lookup(L.PDFName.of('XObject')),fcache={};
+    const font=nm=>{if(fcache[nm])return fcache[nm];let fd=fonts&&fonts.lookup(L.PDFName.of(nm));fcache[nm]=fd instanceof L.PDFDict?RD.fontInfo(fd,ctx,std):{bad:true};return fcache[nm]};
+    let gs={ctm:[1,0,0,1,0,0],Tc:0,Tw:0,Th:1,TL:0,f:null,fs:0,rise:0},stk=[],Tm=[1,0,0,1,0,0],Tlm=[1,0,0,1,0,0];
+    const edits=[],burns=[];
+    const show=(o,str)=>{ // returns TJ array text, or null when nothing removed
+      const F=gs.f?font(gs.f):{bad:true},fs=gs.fs,Th=gs.Th;
+      const parts=[];let removed=false;
+      const step=(code,raw,isSp)=>{const w0=F.bad?500:F.w(code),tx=((w0/1000)*fs+gs.Tc+(isSp?gs.Tw:0))*Th;
+        const m=RD.mul([fs*Th,0,0,fs,0,gs.rise],RD.mul(Tm,gs.ctm)),cx=RD.ap(m,w0/2000,.35);
+        const hit=RD.inside(rects,cx[0],cx[1]);
+        if(hit){if(F.bad||F.approx||!fs){flag=true}removed=true;parts.push({adj:fs?-(tx/(fs*Th))*1000:0})}else parts.push({raw});
+        Tm=RD.mul([1,0,0,1,tx,0],Tm)};
+      for(const el of str){
+        if(typeof el==='number'){parts.push({adj:el});Tm=RD.mul([1,0,0,1,-el/1000*fs*Th,0],Tm);continue}
+        if(F.two){for(let k=0;k+1<el.length;k+=2)step((el.charCodeAt(k)<<8)|el.charCodeAt(k+1),el.substr(k,2),false)}
+        else for(let k=0;k<el.length;k++){const c=el.charCodeAt(k);step(c,el[k],c===32)}}
+      if(!removed)return null;
+      let out='[',run='';const flush=()=>{if(run){out+=RD.enc(run);run=''}};
+      for(const p of parts){if(p.raw!=null)run+=p.raw;else{flush();out+=' '+(+p.adj.toFixed(3))+' '}}flush();return out+'] TJ'};
+    for(const o of ops){const a=o.args,nv=k=>a[k]&&a[k].t==='#'?a[k].v:0;
+      switch(o.op){
+        case 'q':stk.push({...gs,ctm:gs.ctm.slice()});break;
+        case 'Q':if(stk.length)gs=stk.pop();break;
+        case 'cm':gs.ctm=RD.mul([nv(0),nv(1),nv(2),nv(3),nv(4),nv(5)],gs.ctm);break;
+        case 'BT':Tm=[1,0,0,1,0,0];Tlm=[1,0,0,1,0,0];break;
+        case 'Tc':gs.Tc=nv(0);break;case 'Tw':gs.Tw=nv(0);break;case 'Tz':gs.Th=nv(0)/100;break;case 'TL':gs.TL=nv(0);break;case 'Ts':gs.rise=nv(0);break;
+        case 'Tf':gs.f=a[0]&&a[0].v;gs.fs=nv(1);break;
+        case 'Tm':Tm=Tlm=[nv(0),nv(1),nv(2),nv(3),nv(4),nv(5)];break;
+        case 'Td':Tm=Tlm=RD.mul([1,0,0,1,nv(0),nv(1)],Tlm);break;
+        case 'TD':gs.TL=-nv(1);Tm=Tlm=RD.mul([1,0,0,1,nv(0),nv(1)],Tlm);break;
+        case 'T*':Tm=Tlm=RD.mul([1,0,0,1,0,-gs.TL],Tlm);break;
+        case 'Tj':case "'":case '"':{
+          let pre='';if(o.op==='"'){gs.Tw=nv(0);gs.Tc=nv(1);pre=`${nv(0)} Tw ${nv(1)} Tc `}
+          if(o.op!=='Tj'){Tm=Tlm=RD.mul([1,0,0,1,0,-gs.TL],Tlm);pre+='T* '}
+          const s=a[a.length-1];if(!s||s.t!=='s')break;const r=show(o,[s.v]);if(r)edits.push([o.s,o.e,pre+r]);break}
+        case 'TJ':{const arr=a[0];if(!arr||arr.t!=='a')break;const r=show(o,arr.v.map(x=>x.t==='#'?x.v:x.t==='s'?x.v:0));if(r)edits.push([o.s,o.e,r]);break}
+        case 'Do':{const nm=a[0]&&a[0].v,bb=RD.bbox(gs.ctm);
+          const ref=xobjs&&xobjs.get(L.PDFName.of(nm)),xo=ref instanceof L.PDFRef?ctx.lookup(ref):ref;const sub=xo&&xo.dict&&xo.dict.get(L.PDFName.of('Subtype'));
+          if(sub&&String(sub)==='/Image'){if(!RD.hits(rects,bb))break;const flt=xo.dict.lookup(L.PDFName.of('Filter'));const fl=String(flt instanceof L.PDFArray?flt.asArray().map(String).join(','):flt);
+            if(fl==='/DCTDecode'&&ref instanceof L.PDFRef)burns.push({ref,xo,ctm:gs.ctm.slice()});else flag=true}
+          else if(sub&&String(sub)==='/Form'){const B=xo.dict.lookup(L.PDFName.of('BBox')),M=xo.dict.lookup(L.PDFName.of('Matrix'));
+            const bv=B?B.asArray().map(x=>x.asNumber()):[0,0,1,1],mv=M?M.asArray().map(x=>x.asNumber()):[1,0,0,1,0,0],mm=RD.mul(mv,gs.ctm);
+            const p=[RD.ap(mm,bv[0],bv[1]),RD.ap(mm,bv[2],bv[1]),RD.ap(mm,bv[0],bv[3]),RD.ap(mm,bv[2],bv[3])];
+            if(RD.hits(rects,[Math.min(...p.map(q=>q[0])),Math.min(...p.map(q=>q[1])),Math.max(...p.map(q=>q[0])),Math.max(...p.map(q=>q[1]))]))flag=true}
+          else flag=true;break}
+        case 'BI':if(RD.hits(rects,RD.bbox(gs.ctm)))flag=true;break;
+        case 'sh':case 'BX':break;
+      }}
+    // paint the boxes into scanned pictures
+    for(const b of burns){try{const bytes=b.xo.contents||b.xo.getContents();const bmp=await createImageBitmap(new Blob([bytes],{type:'image/jpeg'}));
+        const W=bmp.width,H=bmp.height,c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');x.drawImage(bmp,0,0);
+        const m=b.ctm,det=m[0]*m[3]-m[1]*m[2];if(!det)throw 0;const inv=[m[3]/det,-m[1]/det,-m[2]/det,m[0]/det,(m[2]*m[5]-m[3]*m[4])/det,(m[1]*m[4]-m[0]*m[5])/det];
+        for(const r of rects){const pts=[[r[0],r[1]],[r[2],r[1]],[r[2],r[3]],[r[0],r[3]]].map(([px,py])=>{const u=RD.ap(inv,px,py);return[u[0]*W,(1-u[1])*H]});
+          x.fillStyle=r[4]||'#fff';x.beginPath();pts.forEach((p,k)=>k?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1]));x.closePath();x.fill()}
+        const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.9)),nb=new Uint8Array(await blob.arrayBuffer());
+        const d={Type:'XObject',Subtype:'Image',Width:W,Height:H,ColorSpace:'DeviceRGB',BitsPerComponent:8,Filter:'DCTDecode'};
+        const ns=ctx.stream(nb,d);const sm=b.xo.dict.get(L.PDFName.of('SMask'));if(sm)ns.dict.set(L.PDFName.of('SMask'),sm);
+        ctx.assign(b.ref,ns);changed=true;c.width=c.height=0}catch(e){console.warn('burn',e);flag=true}}
+    if(edits.length){edits.sort((p,q)=>q[0]-p[0]);let s=src;for(const[a0,b0,t] of edits)s=s.slice(0,a0)+t+s.slice(b0);
+      const by=new Uint8Array(s.length);for(let k=0;k<s.length;k++)by[k]=s.charCodeAt(k)&255;
+      node.set(L.PDFName.of('Contents'),ctx.register(ctx.flateStream(by)));changed=true}
+    // annotations (comments, form fields) sitting under a box keep their own text: use a picture for safety
+    const an=node.lookup(L.PDFName.of('Annots'));if(an instanceof L.PDFArray)for(const r of an.asArray()){const ad=r instanceof L.PDFRef?ctx.lookup(r):r;if(!(ad instanceof L.PDFDict))continue;
+      if(String(ad.get(L.PDFName.of('Subtype')))==='/Link')continue;const R=ad.lookup(L.PDFName.of('Rect'));if(!R)continue;const v=R.asArray().map(x=>x.asNumber());
+      if(RD.hits(rects,[Math.min(v[0],v[2]),Math.min(v[1],v[3]),Math.max(v[0],v[2]),Math.max(v[1],v[3])]))flag=true}
+    return{changed,flag}},
+  /* after saving: is any text still sitting under a box? */
+  async leftover(bytes,boxes){
+    const bad=new Set(),pdf=await pdfjsLib.getDocument({data:bytes.slice()}).promise;
+    try{for(const[pi,rects] of boxes){const pg=await pdf.getPage(pi+1),tc=await pg.getTextContent();
+        for(const it of tc.items){const s=(it.str||'');if(!s.trim())continue;const[a,b,c,d,e,f]=it.transform,nu=Math.hypot(a,b)||1,nv=Math.hypot(c,d)||1,u=[a/nu,b/nu],v=[c/nv,d/nv],n=[...s].length;
+          [...s].forEach((ch,k)=>{if(!ch.trim())return;const t=it.width*(k+.5)/n,x=e+u[0]*t+v[0]*nv*.35,y=f+u[1]*t+v[1]*nv*.35;if(RD.inside(rects.map(r=>[r[0]+.6,r[1]+.6,r[2]-.6,r[3]-.6]),x,y))bad.add(pi)})}
+        pg.cleanup()}}
+    finally{try{pdf.destroy()}catch(e){}}
+    return bad},
+  /* turn listed pages into pictures (what you see is all that's kept) */
+  async picturePages(bytes,pages){
+    const{PDFDocument}=PDFLib,doc=await PDFDocument.load(bytes),pdf=await pdfjsLib.getDocument({data:bytes.slice()}).promise;
+    try{for(const pi of [...pages].sort((a,b)=>a-b)){const pg=await pdf.getPage(pi+1),v1=pg.getViewport({scale:1}),sc=Math.min(200/72,Math.sqrt(5e6/(v1.width*v1.height))),vp=pg.getViewport({scale:sc});
+        const c=document.createElement('canvas');c.width=Math.round(vp.width);c.height=Math.round(vp.height);const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);
+        await pg.render({canvasContext:x,viewport:vp}).promise;const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.85)),jpg=await doc.embedJpg(new Uint8Array(await blob.arrayBuffer()));
+        doc.removePage(pi);const np=doc.insertPage(pi,[v1.width,v1.height]);np.drawImage(jpg,{x:0,y:0,width:v1.width,height:v1.height});pg.cleanup();c.width=c.height=0}}
+    finally{try{pdf.destroy()}catch(e){}}
+    return doc.save()}
+};
+/* areas whose hidden content gets removed on save: white-out boxes (checked strictly), and the covers behind edited text (best effort) */
+function redRects(pg){const strict=[],soft=[];
+  for(const a of pg.annots){
+    if(a.t==='wo'){const x0=Math.min(a.a[0],a.b[0]),y0=Math.min(a.a[1],a.b[1]),x1=Math.max(a.a[0],a.b[0]),y1=Math.max(a.a[1],a.b[1]);if(x1-x0>1&&y1-y0>1)strict.push([x0,y0,x1,y1,'#ffffff'])}
+    else if(a.t==='tblock')for(const c of a.covers||[])soft.push([c[0],c[1],c[2],c[3],a.bg||'#ffffff']);
+    else if(a.t==='edit'&&Math.abs(a.ang||0)<.5)soft.push([a.ox-1.5,a.oy-.3*a.cs,a.ox-1.5+a.cw+3,a.oy+a.cs,a.bg||'#ffffff'])}
+  return{strict,soft}}
+async function exportPdf(opts){
+  opts=opts||{};
   const{PDFDocument,rgb,degrees,StandardFonts,LineCapStyle}=PDFLib;
   const out=await PDFDocument.create();const font=await out.embedFont(StandardFonts.Helvetica);
   const copied={};
   for(const src of S.sources){const idxs=[...new Set(S.pages.filter(p=>p.src===src.id).map(p=>p.idx))];if(!idxs.length)continue;
-    const d=await PDFDocument.load(src.bytes,{ignoreEncryption:true});applyForm(d,src);
+    const d=await PDFDocument.load(src.bytes,{ignoreEncryption:true});applyForm(d,src);if(opts.flatten)lockForm(d);
     const cp=await out.copyPages(d,idxs);copied[src.id]={};idxs.forEach((ix,k)=>copied[src.id][ix]=cp[k])}
   const embedded={},used=new Set(),fcache={};
   const stdFont=async a=>{const F={sans:['Helvetica','HelveticaBold','HelveticaOblique','HelveticaBoldOblique'],serif:['TimesRoman','TimesRomanBold','TimesRomanItalic','TimesRomanBoldItalic'],mono:['Courier','CourierBold','CourierOblique','CourierBoldOblique']}[a.fam||'sans'][(a.b?1:0)+(a.i?2:0)];if(!fcache[F])fcache[F]=await out.embedFont(StandardFonts[F]);return fcache[F]};
   const C=h=>{const[r,g,b]=hexRgb(h);return rgb(r,g,b)};
   const safe=s=>[...s].map(ch=>{try{font.encodeText(ch);return ch}catch(e){return '?'}}).join('');
   const blend=PDFLib.BlendMode?{blendMode:PDFLib.BlendMode.Multiply}:{};
+  // pass 1: pages, and remove whatever is hidden under white-out / edited text
+  const pages=[],boxes=new Map();let std=null;
   for(const pg of S.pages){
     const key=pg.src+':'+pg.idx;let page=copied[pg.src][pg.idx];
-    if(used.has(key)){const d=await PDFDocument.load(S.sources[pg.src].bytes,{ignoreEncryption:true});applyForm(d,S.sources[pg.src]);[page]=await out.copyPages(d,[pg.idx])}
-    used.add(key);out.addPage(page);page.setRotation(degrees(rot(pg)));
+    if(used.has(key)){const d=await PDFDocument.load(S.sources[pg.src].bytes,{ignoreEncryption:true});applyForm(d,S.sources[pg.src]);if(opts.flatten)lockForm(d);[page]=await out.copyPages(d,[pg.idx])}
+    used.add(key);out.addPage(page);page.setRotation(degrees(rot(pg)));pages.push(page);
+    const rr=redRects(pg);if(!rr.strict.length&&!rr.soft.length)continue;
+    if(!std){const sd=await PDFDocument.create(),M={};for(const k of Object.keys(StandardFonts))M[k]=await sd.embedFont(StandardFonts[k]);
+      const alias={'Times-Roman':'TimesRoman','Times-Bold':'TimesRomanBold','Times-Italic':'TimesRomanItalic','Times-BoldItalic':'TimesRomanBoldItalic','Helvetica-Bold':'HelveticaBold','Helvetica-Oblique':'HelveticaOblique','Helvetica-BoldOblique':'HelveticaBoldOblique','Courier-Bold':'CourierBold','Courier-Oblique':'CourierOblique','Courier-BoldOblique':'CourierBoldOblique','Arial':'Helvetica','Arial-BoldMT':'HelveticaBold','ArialMT':'Helvetica'};
+      std=n=>M[alias[n]||n]||null}
+    let r={flag:false};try{r=await RD.page(page,[...rr.strict,...rr.soft],out,std)}catch(e){console.warn('redact',e);r={flag:true}}
+    if(rr.strict.length)boxes.set(pages.length-1,{rects:rr.strict,flag:r.flag})}
+  // check nothing is left under a white-out box; those pages become pictures
+  const pic=new Set();
+  if(boxes.size){let left=new Set();try{left=await RD.leftover(await out.save(),[...boxes].map(([i,b])=>[i,b.rects]))}catch(e){console.warn(e);for(const i of boxes.keys())left.add(i)}
+    for(const[i,b] of boxes)if(b.flag||left.has(i))pic.add(i)}
+  exportPdf.last={whiteout:boxes.size,pictured:pic.size};
+  // pass 2: draw the edits
+  for(let pi=0;pi<S.pages.length;pi++){const pg=S.pages[pi],page=pages[pi];
     for(const a of pg.annots){
       if(a.t==='ink'){for(const st of a.s){if(st.length===1){page.drawCircle({x:st[0][0],y:st[0][1],size:a.w/2,color:C(a.color)});continue}
         for(let i=1;i<st.length;i++)page.drawLine({start:{x:st[i-1][0],y:st[i-1][1]},end:{x:st[i][0],y:st[i][1]},thickness:a.w,color:C(a.color),lineCap:LineCapStyle.Round})}}
@@ -1172,8 +1354,11 @@ async function exportPdf(){
         const r=a.R*Math.PI/180,dn=[Math.sin(r),-Math.cos(r)];page.drawImage(embedded[a.key],{x:a.x+dn[0]*a.h,y:a.y+dn[1]*a.h,width:a.w,height:a.h,rotate:degrees(a.R)})}
     }
   }
-  return out.save();
+  let bytes=await out.save();
+  if(pic.size)bytes=await RD.picturePages(bytes,pic);
+  return bytes;
 }
+function lockForm(d){try{const f=d.getForm();if(f.getFields().length)f.flatten()}catch(e){console.warn('lock form',e)}}
 /* re-render a finished PDF in a scan look (auto / grayscale / black & white). Pages become images. */
 async function pdfLook(bytes,look,onp){
   const{PDFDocument}=PDFLib,out=await PDFDocument.create(),pdf=await pdfjsLib.getDocument({data:bytes.slice()}).promise;
@@ -1212,6 +1397,7 @@ async function openSave(){
    ${folderPickerHTML(LIB.folders.includes(last)?last:'Documents',true)}
    ${S.libId?`<label class="row" style="gap:10px"><input type="checkbox" id="svRep" checked style="width:18px;height:18px;accent-color:var(--acc)"><span class="small">Replace the copy already in your Library</span></label>`:''}
    <label class="row" style="gap:10px"><input type="checkbox" id="svDl" ${dl?'checked':''} style="width:18px;height:18px;accent-color:var(--acc)"><span>Also download to this phone</span></label>
+   ${S.sources.some(s=>s.fields&&s.fields.length)?`<label class="row" style="gap:10px;align-items:flex-start"><input type="checkbox" id="svLock" style="width:18px;height:18px;margin-top:2px;accent-color:var(--acc)"><span>Lock form fields<br><span class="small">Your answers become part of the page and can't be changed by others.</span></span></label>`:''}
    <p class="small" style="margin:14px 0 6px"><b>Colour</b></p>
    <div class="seg" id="svLook" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">${[['orig','Original'],['auto','Auto'],['gray','Grayscale'],['bw','Black & white']].map(([k,l])=>`<button class="btn" data-lk="${k}" style="height:40px;padding:0 4px;font-size:13px;${k==='orig'?'background:var(--acc);color:#fff;border-color:var(--acc)':''}">${l}</button>`).join('')}</div>
    <p class="small" id="svLookN" style="display:none;color:#d97706;margin:6px 0 0">Pages are saved as pictures in this look, so text can't be selected or edited afterwards. Save an Original copy too if you may need to edit it.</p>
@@ -1219,10 +1405,10 @@ async function openSave(){
   folderPickerWire();let svLook='orig';
   document.querySelectorAll('#svLook [data-lk]').forEach(b=>b.onclick=()=>{svLook=b.dataset.lk;document.querySelectorAll('#svLook [data-lk]').forEach(o=>{const on=o===b;o.style.background=on?'var(--acc)':'';o.style.color=on?'#fff':'';o.style.borderColor=on?'var(--acc)':''});$('#svLookN').style.display=svLook==='orig'?'none':'block'});
   $('#svOk').onclick=async()=>{let n=$('#svName').value.trim()||'document.pdf';if(!/\.pdf$/i.test(n))n+='.pdf';S.name=n;
-    const folder=folderPickerValue(),wantDl=$('#svDl').checked,rep=$('#svRep')&&$('#svRep').checked;
+    const folder=folderPickerValue(),wantDl=$('#svDl').checked,rep=$('#svRep')&&$('#svRep').checked,lock=!!($('#svLock')&&$('#svLock').checked);
     if(!folder&&!wantDl){toast('Choose a folder or tick download');return}
     lsSet('folio.dl.doc',wantDl?'1':'0');if(folder)lsSet('folio.lastFolder.doc',folder);closeModal();busy('Building PDF…');await tick();let bytes;
-    try{bytes=await exportPdf();if(svLook!=='orig')bytes=await pdfLook(bytes,svLook,(i,n)=>busy(`Applying colour… page ${i} of ${n}`))}catch(err){console.error(err);unbusy();toast('Could not build the PDF: '+(err.message||err),5000);return}
+    try{bytes=await exportPdf({flatten:lock});if(exportPdf.last&&exportPdf.last.pictured)toast(`${exportPdf.last.pictured} page${exportPdf.last.pictured>1?'s':''} with white-out saved as a picture, so nothing hidden is kept`,4500);if(svLook!=='orig')bytes=await pdfLook(bytes,svLook,(i,n)=>busy(`Applying colour… page ${i} of ${n}`))}catch(err){console.error(err);unbusy();toast('Could not build the PDF: '+(err.message||err),5000);return}
     let askRc=null;if(folder){busy('Saving to Library…');try{const id=await libSave(n,folder,bytes,rep?S.libId:null);S.libId=id;S.libFolder=folder;toast(`Saved to ${folder}`);if(isReceiptFolder(folder)){const nd=await libGet(id);if(nd&&!nd.receipt)askRc=nd}}catch(e){console.error(e);toast('Could not save to Library: '+(e.message||e),4500)}}
     if(askRc)setTimeout(()=>openReceiptDetails(askRc,true),400);
     S.dirty=false;unbusy();if(wantDl)offerDownload(n,bytes)};
