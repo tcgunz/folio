@@ -374,7 +374,7 @@ body.ci #menu [data-m=region] .ic{color:var(--c-sky)}body.ci #menu [data-m=rctog
     <hr>
     <button data-m="about"><span class="ic" data-i="info"></span>About, terms &amp; licences</button>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-16 · 66<br>© 2026 Tommy Chieng. All rights reserved.</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-16 · 67<br>© 2026 Tommy Chieng. All rights reserved.</div>
   </div>
 </div>
 
@@ -1666,21 +1666,26 @@ function cleanEdges(im){
   // only for paper-like pages (light and close to white/cream). Coloured covers, photos and dark pages are left alone,
   // otherwise darker parts of the design near the edge get painted over.
   if((pr+pg+pb)/3<150||Math.max(pr,pg,pb)-Math.min(pr,pg,pb)>60)return 0;
-  const off=(x,y)=>{const j=(y*w+x)*4,r=d[j]-pr,g=d[j+1]-pg,b=d[j+2]-pb;return r*r+g*g+b*b>70*70};
-  const median=(a,win)=>{const out=new Int32Array(a.length),half=win>>1,buf=[];for(let i=0;i<a.length;i++){buf.length=0;for(let k=Math.max(0,i-half);k<=Math.min(a.length-1,i+half);k++)buf.push(a[k]);buf.sort((x,y)=>x-y);out[i]=buf[buf.length>>1]}return out};
-  let painted=0;
-  // runs[i] = how far the not-paper strip reaches in from the edge at position i
-  const edge=(len,depthMax,isOff,paint)=>{
-    const runs=new Int32Array(len);for(let i=0;i<len;i++){let r=0;while(r<depthMax&&isOff(i,r))r++;runs[i]=r}
-    const win=Math.max(15,Math.round(len*.06))|1,med=median(runs,win);
-    for(let i=0;i<len;i++){const r=Math.min(runs[i],med[i]+2);if(med[i]>=2&&r>0){paint(i,r);painted+=r}}
-  };
-  const bw=Math.max(3,Math.round(w*.07)),bh=Math.max(3,Math.round(h*.07));
-  const fill=(x,y)=>{const j=(y*w+x)*4;d[j]=pr;d[j+1]=pg;d[j+2]=pb};
-  edge(h,bw,(y,r)=>off(r,y),(y,r)=>{for(let x=0;x<Math.min(w,r+1);x++)fill(x,y)});              // left
-  edge(h,bw,(y,r)=>off(w-1-r,y),(y,r)=>{for(let x=0;x<Math.min(w,r+1);x++)fill(w-1-x,y)});      // right
-  edge(w,bh,(x,r)=>off(x,r),(x,r)=>{for(let y=0;y<Math.min(h,r+1);y++)fill(x,y)});              // top
-  edge(w,bh,(x,r)=>off(x,h-1-r),(x,r)=>{for(let y=0;y<Math.min(h,r+1);y++)fill(x,h-1-y)});      // bottom
+  const PL=(pr+pg+pb)/3;
+  // "not paper": clearly different colour, or a shadow (darker than the paper)
+  const off=j=>{const r=d[j]-pr,g=d[j+1]-pg,b=d[j+2]-pb;return r*r+g*g+b*b>70*70||(PL-(d[j]+d[j+1]+d[j+2])/3>28)};
+  // the surface is everything not-paper that connects to the photo's edge, within an outer band
+  const bw=Math.max(4,Math.round(w*.15)),bh=Math.max(4,Math.round(h*.1)),inBand=(x,y)=>x<bw||y<bh||x>=w-bw||y>=h-bh;
+  // ink-black (printed bars, text touching the edge) may only be cleared close to the edge
+  const iw=Math.max(3,Math.round(w*.04)),ih=Math.max(3,Math.round(h*.03)),near=(x,y)=>x<iw||y<ih||x>=w-iw||y>=h-ih,ink=j=>d[j]+d[j+1]+d[j+2]<180;
+  const m=new Uint8Array(w*h),q=new Int32Array(w*h);let qh=0,qt=0;
+  const seed=(x,y)=>{const i=y*w+x;if(!m[i]&&off(i*4)){m[i]=1;q[qt++]=i}};
+  for(let x=0;x<w;x++){seed(x,0);seed(x,h-1)}for(let y=0;y<h;y++){seed(0,y);seed(w-1,y)}
+  while(qh<qt){const i=q[qh++],x=i%w,y=(i/w)|0;
+    if(x>0){const k=i-1;if(!m[k]&&inBand(x-1,y)&&off(k*4)&&(!ink(k*4)||near(x-1,y))){m[k]=1;q[qt++]=k}}
+    if(x<w-1){const k=i+1;if(!m[k]&&inBand(x+1,y)&&off(k*4)&&(!ink(k*4)||near(x+1,y))){m[k]=1;q[qt++]=k}}
+    if(y>0){const k=i-w;if(!m[k]&&inBand(x,y-1)&&off(k*4)&&(!ink(k*4)||near(x,y-1))){m[k]=1;q[qt++]=k}}
+    if(y<h-1){const k=i+w;if(!m[k]&&inBand(x,y+1)&&off(k*4)&&(!ink(k*4)||near(x,y+1))){m[k]=1;q[qt++]=k}}}
+  if(!qt)return 0;
+  // grow 2px to take the soft blend where paper meets the surface
+  let cur=m;for(let pass=0;pass<2;pass++){const nx=cur.slice();for(let y=0;y<h;y++)for(let x=0;x<w;x++){const i=y*w+x;if(cur[i]||!inBand(x,y))continue;
+      if((x>0&&cur[i-1])||(x<w-1&&cur[i+1])||(y>0&&cur[i-w])||(y<h-1&&cur[i+w]))nx[i]=1}cur=nx}
+  let painted=0;for(let i=0;i<w*h;i++)if(cur[i]){const j=i*4;d[j]=pr;d[j+1]=pg;d[j+2]=pb;painted++}
   return painted;
 }
 function previewScan(p,q,look,rot,maxSide){
