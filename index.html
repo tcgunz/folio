@@ -373,7 +373,7 @@ body.ci #menu [data-m=region] .ic{color:var(--c-sky)}body.ci #menu [data-m=rctog
     <button data-m="rctoggle" id="mRc"><span class="ic" data-i="grid"></span><span id="mRcL">Hide Receipts &amp; expenses</span></button>
     <hr>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 62<br>© 2026 Tommy Chieng. All rights reserved.</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-15 · 63<br>© 2026 Tommy Chieng. All rights reserved.</div>
   </div>
 </div>
 
@@ -1331,13 +1331,17 @@ function findQuadLines(d,w,h){
 }
 
 function detectQuad(c,strict,noLines){
-  const q=detectBright(c,strict);if(q.found||noLines)return q;
+  const q=detectBright(c,strict);
+  // a "page" that fills the whole frame usually means the surface itself was picked (white table, coloured cover on a grey desk), so look for the page's edges instead
+  const W0=c.width,H0=c.height,atEdge=q.found&&q.filter(([a,b])=>a<W0*.015||b<H0*.015||a>W0*.985||b>H0*.985).length>=3;
+  if((q.found&&!atEdge)||noLines)return q;
   try{const W=c.width,H=c.height,s=Math.min(1,256/Math.max(W,H)),w=Math.max(8,Math.round(W*s)),h=Math.max(8,Math.round(H*s));
     const t=document.createElement('canvas');t.width=w;t.height=h;const x=t.getContext('2d');x.drawImage(c,0,0,w,h);
     const L=findQuadLines(x.getImageData(0,0,w,h).data,w,h);
     if(L){const Q=L.map(p=>[(p[0]+.5)/s,(p[1]+.5)/s]);
       if(strict&&Q.filter(([a,b])=>a<W*.015||b<H*.015||a>W*.985||b>H*.985).length>=2){const f=q.slice();f.reason='edge';return f}
       Q.found=true;Q.method='lines';return Q}}catch(e){console.warn(e)}
+  if(atEdge){const f=q.slice();f.found=!strict;f.reason='edge';return f}
   return q;
 }
 function detectBright(c,strict){
