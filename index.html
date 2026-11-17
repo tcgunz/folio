@@ -395,7 +395,7 @@ body.ci #menu [data-m=region] .ic{color:var(--c-sky)}body.ci #menu [data-m=rctog
     <hr>
     <button data-m="about"><span class="ic" data-i="info"></span>About, terms &amp; licences</button>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-17 · 77<br>© 2026 Tommy Chieng. All rights reserved.</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-17 · 78<br>© 2026 Tommy Chieng. All rights reserved.</div>
   </div>
 </div>
 
@@ -449,7 +449,7 @@ body.ci #menu [data-m=region] .ic{color:var(--c-sky)}body.ci #menu [data-m=rctog
   <div id="libFolderTools" style="display:none;gap:14px;padding:6px 14px 0"><button class="link" id="libRenameF">Rename folder</button><button class="link" style="color:var(--danger)" id="libDeleteF">Delete folder</button></div>
   <div id="libTools" class="lnorm"><select id="libSort" aria-label="Sort"><option value="new">Newest first</option><option value="old">Oldest first</option><option value="name">Name A–Z</option><option value="big">Largest first</option></select><button class="tb" id="libView" aria-label="Switch between grid and list"></button><span class="sp" style="flex:1"></span><button class="btn" id="libDups" style="display:none;height:36px;border-color:#f59e0b;color:#92400e"></button></div>
   <div id="libGrid" style="flex:1;overflow:auto;padding:12px"></div>
-  <div class="sf lsel" id="libSelActs" style="border-top:1px solid var(--line);background:#fff"><button class="btn" id="libSelMove">Move</button><button class="btn" id="libSelMerge">Combine</button><button class="btn" id="libSelShrink">Reduce size</button><button class="btn" id="libSelDl">Download</button><button class="btn red" id="libSelDel">Delete</button></div>
+  <div class="sf lsel" id="libSelActs" style="border-top:1px solid var(--line);background:#fff"><button class="btn" id="libSelMove">Move</button><button class="btn" id="libSelMerge">Combine</button><button class="btn" id="libSelShrink">Reduce size</button><button class="btn" id="libSelDl">Download</button><button class="btn" id="libSelShare">Share</button><button class="btn red" id="libSelDel">Delete</button></div>
   <div class="sf lnorm" style="border-top:1px solid var(--line);align-items:center"><span class="small" id="libUse" style="flex:1"></span><button class="btn pri rcx" id="libSheet">Spreadsheet</button><button class="btn" id="libCsv" style="display:none">Export CSV</button><button class="tb" id="libMoreB" aria-label="Back up and restore" style="font-size:20px;font-weight:800;width:44px">⋯</button><button class="btn" id="libRestoreB" style="display:none">Restore</button><button class="btn" id="libBackup" style="display:none">Back up</button></div>
 </div>
 <div id="sheet">
@@ -2556,6 +2556,23 @@ $('#libSelDl').onclick=async()=>{const ds=libSelDocs();if(!ds.length)return;
   if(ds.length===1){offerDownload(ds[0].name+'.pdf',new Uint8Array(await ds[0].blob.arrayBuffer()));return}
   busy('Packing…');const used=new Set(),files=[];for(const d of ds){let fn=d.name.replace(/[\\/:*?"<>|]/g,'_')+'.pdf',k=2;while(used.has(fn))fn=d.name+` (${k++}).pdf`;used.add(fn);files.push({name:fn,data:new Uint8Array(await d.blob.arrayBuffer())})}
   unbusy();offerDownload(`Folio ${ds.length} documents.zip`,makeZip(files),'application/zip')};
+/* share several documents: as separate PDFs, or combined into one */
+$('#libSelShare').onclick=()=>{const ds=libSelDocs().filter(d=>d.blob);if(!ds.length)return;
+  const used={},files=ds.map(d=>{let n=(d.name||'document').replace(/\.pdf$/i,'').replace(/[\\/:*?"<>|]+/g,' ').trim()||'document';used[n]=(used[n]||0)+1;if(used[n]>1)n+=` (${used[n]})`;return{name:n+'.pdf',blob:d.blob,type:'application/pdf'}});
+  const total=ds.reduce((a,d)=>a+(d.size||d.blob.size||0),0),big=total>25*1048576;
+  if(ds.length===1&&!big){shareFiles(files,files[0].name);return}
+  openModal(`<h3>Share ${ds.length} document${ds.length>1?'s':''}</h3><p class="small" style="margin-top:-6px">${fmtSize(total)} in total</p>
+   ${big?`<p class="small" style="color:#b45309;margin:4px 0 8px">That's over 25 MB, which many email services won't accept. Tap <b>Reduce size</b> first, or send them through Drive or WhatsApp.</p>`:''}
+   <div style="display:grid;gap:8px;margin-top:8px">
+    <button class="btn pri" id="lsSep" style="justify-content:flex-start;height:auto;padding:10px 12px;text-align:left;display:block"><b>${ds.length>1?'Separate files':'Send it'}</b><br><span class="small" style="color:inherit;opacity:.85">${ds.length>1?`${ds.length} PDFs attached, each with its own name`:esc(files[0].name)}</span></button>
+    ${ds.length>1?`<button class="btn" id="lsOne" style="justify-content:flex-start;height:auto;padding:10px 12px;text-align:left;display:block"><b>Combine into one PDF</b><br><span class="small">All pages in one file, in the order shown</span></button>`:''}
+   </div><div class="btns">${big?'<button class="btn" id="lsShrink">Reduce size</button>':''}<button class="btn" data-x>Cancel</button></div>`);
+  $('#lsSep').onclick=async()=>{const ok=await shareFiles(files,ds.length>1?`${ds.length} documents`:files[0].name);if(ok){closeModal();libSelEnd()}};
+  if($('#lsShrink'))$('#lsShrink').onclick=()=>{closeModal();askShrink(ds,()=>{libSelEnd();renderLib()})};
+  if($('#lsOne'))$('#lsOne').onclick=async()=>{closeModal();busy('Combining…');
+    try{const out=await PDFLib.PDFDocument.create();for(const d of ds){const src=await PDFLib.PDFDocument.load(await d.blob.arrayBuffer(),{ignoreEncryption:true});(await out.copyPages(src,src.getPageIndices())).forEach(pg=>out.addPage(pg))}
+      const b=await out.save();unbusy();libSelEnd();readyShare([{name:`Combined ${ds.length} documents.pdf`,bytes:b}],`${ds.length} documents`)}
+    catch(e){console.error(e);unbusy();toast('Could not combine those')}}};
 $('#libSelMerge').onclick=async()=>{const ds=libSelDocs();if(ds.length<2){toast('Select two or more to combine');return}
   busy('Combining…');try{const out=await PDFLib.PDFDocument.create();for(const d of ds){const src=await PDFLib.PDFDocument.load(await d.blob.arrayBuffer(),{ignoreEncryption:true});(await out.copyPages(src,src.getPageIndices())).forEach(p=>out.addPage(p))}
     const b=await out.save();resetDoc();S.pages=await addSource(b,'combined');S.name=`Combined ${ds.length} documents.pdf`;fitWidth(false);relayout(false);libSelEnd();$('#lib').classList.remove('on');unbusy();toast(`Combined ${ds.length} documents. Save it to keep it.`,4000)}
