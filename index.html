@@ -383,7 +383,7 @@ body.ci #menu [data-m=region] .ic{color:var(--c-sky)}body.ci #menu [data-m=rctog
     <hr>
     <button data-m="about"><span class="ic" data-i="info"></span>About, terms &amp; licences</button>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-17 · 75<br>© 2026 Tommy Chieng. All rights reserved.</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-17 · 76<br>© 2026 Tommy Chieng. All rights reserved.</div>
   </div>
 </div>
 
@@ -449,7 +449,7 @@ body.ci #menu [data-m=region] .ic{color:var(--c-sky)}body.ci #menu [data-m=rctog
     <p class="small" style="padding:4px 14px">Tap a receipt to check or change its details (or a cell, in table view). Changes save automatically. Tap the picture to open the receipt itself. Press and hold a receipt to select several.</p>
     <div id="shSummary" style="padding:0 10px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px"></div>
   </div>
-  <div id="shSelBar"><b id="shSelN" style="flex:1">0 selected</b><button class="btn" id="shSelAll" style="height:40px;background:#fff;color:#111827;border-color:#fff">Select all</button><button class="btn" id="shSelDel" style="height:40px;background:#dc2626;border-color:#dc2626;color:#fff">Delete</button></div>
+  <div id="shSelBar"><b id="shSelN" style="flex:1">0 selected</b><button class="btn" id="shSelAll" style="height:40px;background:#fff;color:#111827;border-color:#fff">Select all</button><button class="btn" id="shSelShare" style="height:40px;background:#fff;color:#111827;border-color:#fff">Share</button><button class="btn" id="shSelDel" style="height:40px;background:#dc2626;border-color:#dc2626;color:#fff">Delete</button></div>
 </div>
 <div id="scan">
   <div class="sh"><button class="tb" id="scBack"><span class="ic" data-i="back"></span></button><b id="scTitle">Scanner</b><span class="sp"></span><span id="scCount" class="small" style="color:#9ca3af;padding-right:8px"></span></div>
@@ -1407,6 +1407,7 @@ async function openSave(){
    ${folderPickerHTML(LIB.folders.includes(last)?last:'Documents',true)}
    ${S.libId?`<label class="row" style="gap:10px"><input type="checkbox" id="svRep" checked style="width:18px;height:18px;accent-color:var(--acc)"><span class="small">Replace the copy already in your Library</span></label>`:''}
    <label class="row" style="gap:10px"><input type="checkbox" id="svDl" ${dl?'checked':''} style="width:18px;height:18px;accent-color:var(--acc)"><span>Also download to this phone</span></label>
+   ${canShareFiles()?`<label class="row" style="gap:10px"><input type="checkbox" id="svSh" ${lsGet('folio.svsh')==='1'?'checked':''} style="width:18px;height:18px;accent-color:var(--acc)"><span>Share after saving <span class="small">(email, Messages, WhatsApp…)</span></span></label>`:''}
    ${S.sources.some(s=>s.fields&&s.fields.length)?`<label class="row" style="gap:10px;align-items:flex-start"><input type="checkbox" id="svLock" style="width:18px;height:18px;margin-top:2px;accent-color:var(--acc)"><span>Lock form fields<br><span class="small">Your answers become part of the page and can't be changed by others.</span></span></label>`:''}
    <p class="small" style="margin:14px 0 6px"><b>Colour</b></p>
    <div class="seg" id="svLook" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">${[['orig','Original'],['auto','Auto'],['gray','Grayscale'],['bw','Black & white']].map(([k,l])=>`<button class="btn" data-lk="${k}" style="height:40px;padding:0 4px;font-size:13px;${k==='orig'?'background:var(--acc);color:#fff;border-color:var(--acc)':''}">${l}</button>`).join('')}</div>
@@ -1415,13 +1416,13 @@ async function openSave(){
   folderPickerWire();let svLook='orig';
   document.querySelectorAll('#svLook [data-lk]').forEach(b=>b.onclick=()=>{svLook=b.dataset.lk;document.querySelectorAll('#svLook [data-lk]').forEach(o=>{const on=o===b;o.style.background=on?'var(--acc)':'';o.style.color=on?'#fff':'';o.style.borderColor=on?'var(--acc)':''});$('#svLookN').style.display=svLook==='orig'?'none':'block'});
   $('#svOk').onclick=async()=>{let n=$('#svName').value.trim()||'document.pdf';if(!/\.pdf$/i.test(n))n+='.pdf';S.name=n;
-    const folder=folderPickerValue(),wantDl=$('#svDl').checked,rep=$('#svRep')&&$('#svRep').checked,lock=!!($('#svLock')&&$('#svLock').checked);
-    if(!folder&&!wantDl){toast('Choose a folder or tick download');return}
+    const folder=folderPickerValue(),wantDl=$('#svDl').checked,rep=$('#svRep')&&$('#svRep').checked,lock=!!($('#svLock')&&$('#svLock').checked),wantSh=!!($('#svSh')&&$('#svSh').checked);
+    if(!folder&&!wantDl&&!wantSh){toast('Choose a folder, or tick download or share');return}lsSet('folio.svsh',wantSh?'1':'0');
     lsSet('folio.dl.doc',wantDl?'1':'0');if(folder)lsSet('folio.lastFolder.doc',folder);closeModal();busy('Building PDF…');await tick();let bytes;
     try{bytes=await exportPdf({flatten:lock});if(exportPdf.last&&exportPdf.last.pictured)toast(`${exportPdf.last.pictured} page${exportPdf.last.pictured>1?'s':''} with white-out saved as a picture, so nothing hidden is kept`,4500);if(svLook!=='orig')bytes=await pdfLook(bytes,svLook,(i,n)=>busy(`Applying colour… page ${i} of ${n}`))}catch(err){console.error(err);unbusy();toast('Could not build the PDF: '+(err.message||err),5000);return}
     let askRc=null;if(folder){busy('Saving to Library…');try{const id=await libSave(n,folder,bytes,rep?S.libId:null);S.libId=id;S.libFolder=folder;toast(`Saved to ${folder}`);if(isReceiptFolder(folder)){const nd=await libGet(id);if(nd&&!nd.receipt)askRc=nd}}catch(e){console.error(e);toast('Could not save to Library: '+(e.message||e),4500)}}
     if(askRc)setTimeout(()=>openReceiptDetails(askRc,true),400);
-    S.dirty=false;unbusy();if(wantDl)offerDownload(n,bytes)};
+    S.dirty=false;unbusy();if(wantDl)offerDownload(n,bytes);if(wantSh)setTimeout(()=>readyShare([{name:n,bytes}]),askRc?0:200)};
 }
 
 /* ---------------- top bar ---------------- */
@@ -2403,6 +2404,25 @@ async function libOpenDoc(d){
   catch(e){console.error(e);toast('Could not open it')}
   unbusy();
 }
+/* ---------------- sharing: the phone's own share menu (email, Messages, WhatsApp, Drive…) ---------------- */
+const EXP={share:false};
+function canShareFiles(){try{return!!(navigator.canShare&&navigator.canShare({files:[new File(['x'],'x.pdf',{type:'application/pdf'})]}))}catch(e){return false}}
+/* files: [{name, bytes|blob, type}] — must be called straight from a tap */
+async function shareFiles(files,title){
+  const F=files.map(f=>new File([f.blob||f.bytes],f.name,{type:f.type||'application/pdf'}));
+  try{if(navigator.canShare&&navigator.canShare({files:F})){await navigator.share({files:F,title:title||F[0].name});return true}}
+  catch(e){if(e&&e.name==='AbortError')return true;console.warn(e)}
+  toast("Sharing isn't available here, so it was downloaded instead",4000);
+  for(const f of files)offerDownload(f.name,f.bytes||new Uint8Array(await f.blob.arrayBuffer()),f.type||'application/pdf');return false}
+/* a finished file, ready to send: one tap on Share opens the share menu */
+function readyShare(files,title){
+  const sz=f=>fmtSize((f.bytes&&(f.bytes.length||f.bytes.byteLength))||(f.blob&&f.blob.size)||0);
+  openModal(`<h3>Ready to send</h3><div style="margin:-4px 0 10px">${files.map(f=>`<div class="row" style="gap:10px;padding:8px 0;border-bottom:1px solid var(--line)">${icon('form')}<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.name)}</span><span class="small">${sz(f)}</span></div>`).join('')}</div>
+   <p class="small">Share opens your phone's share menu: pick Gmail, Outlook, Messages, WhatsApp, Drive and more. The file is attached and sent from your own account.</p>
+   <div class="btns"><button class="btn" id="rsDl">${icon('download')} Download</button><button class="btn pri" id="rsSh">${icon('share')} Share</button></div>`);
+  $('#rsSh').onclick=async()=>{const ok=await shareFiles(files,title);if(ok)closeModal()};
+  $('#rsDl').onclick=async()=>{closeModal();for(const f of files)offerDownload(f.name,f.bytes||new Uint8Array(await f.blob.arrayBuffer()),f.type||'application/pdf')}}
+const deliver=(name,bytes,type)=>EXP.share?readyShare([{name,bytes,type}]):offerDownload(name,bytes,type);
 async function libShare(d){
   try{const f=new File([d.blob],d.name+'.pdf',{type:'application/pdf'});
     if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:d.name});return}}catch(e){if(e&&e.name==='AbortError')return}
@@ -2868,14 +2888,17 @@ function exportXlsx(listIn,byMonth,opts){
     sheets.push({name:'Line items',freeze:true,cols:[10,12,24,44,14,12],rows:IR})}
   const xbytes=buildXlsx(sheets),t=new Date(),stamp=`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`,base=`${LIB.folder||'Library'} ${stamp}`,tt=list.reduce((a,d)=>a+val(d,'charged'),0);
   const done=()=>toast(`Exported ${list.length} receipt${list.length>1?'s':''}${byMonth?` in ${mKeys.length} month tab${mKeys.length>1?'s':''}`:''}${opts.items?` · ${itemCount} line items`:''} · total ${fmtMoney(tt)}`,5000);
-  if(!opts.files){offerDownload(base+'.xlsx',xbytes,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');done();return}
+  EXP.share=!!opts.share;
+  if(!opts.files){deliver(base+'.xlsx',xbytes,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');EXP.share=false;done();return}
   (async()=>{busy('Packing receipts…');try{const files=[{name:base+'.xlsx',data:xbytes}];
       for(const d of list){if(d.blob)files.push({name:fileOf[d.id],data:new Uint8Array(await d.blob.arrayBuffer())})}
-      const z=makeZip(files);unbusy();offerDownload(base+'.zip',z,'application/zip');done()}
+      const z=makeZip(files);unbusy();EXP.share=!!opts.share;deliver(base+'.zip',z,'application/zip');EXP.share=false;done()}
     catch(e){console.error(e);unbusy();toast('Could not pack the receipts')}})();
 }
 function openExport(listIn){
+  const shOK=canShareFiles(),shOn=shOK&&lsGet('folio.xsh')==='1';
   openModal(`<h3>Export</h3><p class="small" style="margin-top:-6px">Choose a file type. Both open in Excel and Google Sheets.</p>
+   ${shOK?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:0 0 12px" id="exHow"><button class="btn" data-how="dl">${icon('download')} Download</button><button class="btn" data-how="sh">${icon('share')} Share / email</button></div>`:''}
    <button class="big" id="exX" style="display:flex;gap:12px;align-items:center;width:100%;padding:14px;border:1px solid var(--line);border-radius:12px;background:#fff;text-align:left;margin-bottom:10px"><span style="font-size:22px">📊</span><span><b>Excel (.xlsx)</b> · recommended<br><small style="color:var(--muted)">Amounts to 2 decimals, real dates, totals and a summary sheet</small></span></button>
    <button class="big" id="exC" style="display:flex;gap:12px;align-items:center;width:100%;padding:14px;border:1px solid var(--line);border-radius:12px;background:#fff;text-align:left"><span style="font-size:22px">📄</span><span><b>CSV</b><br><small style="color:var(--muted)">Plain text, for importing into other software</small></span></button>
    <p class="small" style="margin:14px 0 4px"><b>Excel options</b></p>
@@ -2883,7 +2906,10 @@ function openExport(listIn){
    <label class="row" style="gap:10px;margin:6px 0"><input type="checkbox" id="exI" ${lsGet('folio.xi')==='1'?'checked':''} style="width:18px;height:18px;accent-color:var(--acc)"><span>Include receipt line items (extra tab)</span></label>
    <label class="row" style="gap:10px;margin:6px 0;align-items:flex-start"><input type="checkbox" id="exF" ${lsGet('folio.xf')==='1'?'checked':''} style="width:18px;height:18px;margin-top:2px;accent-color:var(--acc)"><span>Include the receipt files<br><span class="small">Downloads a .zip with the spreadsheet and a Receipts folder, sorted into a folder per month. Each row links to its PDF.</span></span></label>
    <div class="btns"><button class="btn" data-x>Cancel</button></div>`);
-  $('#exX').onclick=()=>{const bm=$('#exM').checked,it=$('#exI').checked,fl=$('#exF').checked;lsSet('folio.xm',bm?'1':'0');lsSet('folio.xi',it?'1':'0');lsSet('folio.xf',fl?'1':'0');closeModal();exportXlsx(listIn,bm,{items:it,files:fl})};$('#exC').onclick=()=>{closeModal();exportCSV(listIn)};
+  let how=shOn?'sh':'dl';const paint=()=>document.querySelectorAll('#exHow [data-how]').forEach(b=>{const on=b.dataset.how===how;b.style.background=on?'var(--acc)':'';b.style.color=on?'#fff':'';b.style.borderColor=on?'var(--acc)':''});
+  document.querySelectorAll('#exHow [data-how]').forEach(b=>b.onclick=()=>{how=b.dataset.how;lsSet('folio.xsh',how==='sh'?'1':'0');paint()});paint();
+  const go=f=>{EXP.share=how==='sh';try{f()}finally{setTimeout(()=>{EXP.share=false},0)}};
+  $('#exX').onclick=()=>{const bm=$('#exM').checked,it=$('#exI').checked,fl=$('#exF').checked;lsSet('folio.xm',bm?'1':'0');lsSet('folio.xi',it?'1':'0');lsSet('folio.xf',fl?'1':'0');closeModal();const sh=how==='sh';EXP.share=sh;exportXlsx(listIn,bm,{items:it,files:fl,share:sh})};$('#exC').onclick=()=>{closeModal();go(()=>exportCSV(listIn))};
 }
 const csvCell=v=>{v=v==null?'':String(v);return/[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
 function exportCSV(listIn){
@@ -2898,7 +2924,7 @@ function exportCSV(listIn){
   rows.push([]);rows.push(['','','','','','','TOTAL',ts.toFixed(2),tx.toFixed(2),tb.toFixed(2),tg.toFixed(2),tt.toFixed(2)]);
   const mk=Object.keys(months).sort();if(mk.length){rows.push([]);rows.push(['Monthly totals']);rows.push(['Month',`Amount charged (${REGION.cur})`]);mk.forEach(m=>rows.push([m,months[m].toFixed(2)]))}
   const csv=rows.map(r=>r.map(csvCell).join(',')).join('\r\n');const t=new Date();
-  offerDownload(`${LIB.folder||'Library'} ${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}.csv`,new TextEncoder().encode(csv),'text/csv');
+  deliver(`${LIB.folder||'Library'} ${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}.csv`,new TextEncoder().encode(csv),'text/csv');
   toast(`Exported ${list.length} row${list.length>1?'s':''} · total ${fmtMoney(tt)}`,4000);
 }
 const libSearchText=d=>(d.name+' '+d.folder+' '+(d.text||'')+' '+(d.receipt?Object.values(d.receipt).join(' '):'')).toLowerCase();
@@ -2936,7 +2962,7 @@ function shExtraDupes(map){const extra=new Set(),seen=new Set(),score=d=>{const 
     const docs=grp.map(g=>SH.rows.find(d=>d.id===g)).filter(Boolean).sort((a,b)=>score(b)-score(a)||a.created-b.created);docs.slice(1).forEach(d=>extra.add(d.id))}
   return extra}
 function shSelUI(){const on=!!SH.sel;$('#shSelBar').classList.toggle('on',on);$('#shSelect').textContent=on?'Cancel':'Select';
-  if(on){const n=SH.sel.size,v=shVisible();$('#shSelAll').textContent=v.length&&v.every(d=>SH.sel.has(d.id))?'Select none':'Select all';$('#shSelN').textContent=`${n} selected`;$('#shSelDel').disabled=!n;$('#shSelDel').style.opacity=n?1:.5}}
+  if(on){const n=SH.sel.size,v=shVisible();$('#shSelShare').disabled=!n;$('#shSelShare').style.opacity=n?1:.5;$('#shSelAll').textContent=v.length&&v.every(d=>SH.sel.has(d.id))?'Select none':'Select all';$('#shSelN').textContent=`${n} selected`;$('#shSelDel').disabled=!n;$('#shSelDel').style.opacity=n?1:.5}}
 async function shDeleteSel(ids){
   ids=[...ids];if(!ids.length)return;const names=ids.map(id=>{const d=SH.rows.find(x=>x.id===id);return d?((d.receipt&&d.receipt.vendor)||d.name):''}).filter(Boolean);
   openModal(`<h3>Delete ${ids.length} receipt${ids.length>1?'s':''}?</h3><p class="small" style="margin-top:-6px">${esc(names.slice(0,6).join(', '))}${names.length>6?` and ${names.length-6} more`:''}</p><p>They'll be removed from your Library and this spreadsheet. This can't be undone.</p><div class="btns"><button class="btn" data-x>Cancel</button><button class="btn" id="shDelGo" style="background:#dc2626;border-color:#dc2626;color:#fff">Delete</button></div>`);
@@ -3023,6 +3049,9 @@ $('#shSelect').onclick=()=>{SH.sel=SH.sel?null:new Set();renderSheet()};
 })();
 $('#shSelAll').onclick=()=>{const v=shVisible();if(v.length&&v.every(d=>SH.sel.has(d.id)))SH.sel=new Set();else v.forEach(d=>SH.sel.add(d.id));renderSheet()};
 $('#shSelDel').onclick=()=>shDeleteSel(SH.sel||[]);
+$('#shSelShare').onclick=()=>{const ds=SH.rows.filter(d=>SH.sel&&SH.sel.has(d.id)&&d.blob);if(!ds.length){toast('Select the receipts to send first');return}
+  const used={};const files=ds.map(d=>{const r=d.receipt||{};let n=([r.vendor,r.date].filter(Boolean).join(' ')||d.name).replace(/[\\/:*?"<>|]+/g,' ').trim();used[n]=(used[n]||0)+1;if(used[n]>1)n+=` (${used[n]})`;return{name:n+'.pdf',blob:d.blob,type:'application/pdf'}});
+  shareFiles(files,files.length>1?`${files.length} receipts`:files[0].name)};
 $('#shDups').onclick=()=>{const ex=shExtraDupes(SH.dup||shDupes());SH.sel=new Set(ex);renderSheet();toast(`Selected ${ex.size} likely extra cop${ex.size>1?'ies':'y'}, keeping the most complete one of each. Check, then tap Delete.`,5000)};
 $('#shView').onclick=()=>{SH.view=shIsList()?'table':'list';renderSheet()};
 $('#shFill').onclick=fillMissing;
