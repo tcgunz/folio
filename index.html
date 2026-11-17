@@ -396,7 +396,7 @@ body.ci #menu [data-m=region] .ic{color:var(--c-sky)}body.ci #menu [data-m=rctog
     <hr>
     <button data-m="about"><span class="ic" data-i="info"></span>About, terms &amp; licences</button>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-17 · 79<br>© 2026 Tommy Chieng. All rights reserved.</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-17 · 80<br>© 2026 Tommy Chieng. All rights reserved.</div>
   </div>
 </div>
 
@@ -771,7 +771,7 @@ async function openFiles(files,append){
     if(!append){resetDoc();S.name=files[0].name.replace(/\.pdf$/i,'')+' (edited).pdf'}else snapshot();
     let np=[];
     for(const f of files)np.push(...await addSource(await f.arrayBuffer(),f.name));
-    if(append){S.pages.splice(S.pages.length?S.cur+1:0,0,...np)}else{S.pages=np;fitWidth(false)}
+    if(append){S.pages.splice(S.pages.length?S.cur+1:0,0,...np)}else{S.pages=np;fitPage(false)}
     relayout(append);
     if(append)toast(`Added ${np.length} page${np.length>1?'s':''}`);
   }catch(err){console.error(err);toast(err&&err.name==='PasswordException'?'This PDF is password-protected':'Could not open that file as a PDF',4000)}
@@ -780,7 +780,7 @@ async function openFiles(files,append){
 async function addBytesAsDoc(bytes,name,append){
   const np=await addSource(bytes,name);
   if(append&&S.pages.length){snapshot();S.pages.push(...np);relayout(true)}
-  else{resetDocKeep();S.pages=np;S.name=name;fitWidth(false);relayout(false)}
+  else{resetDocKeep();S.pages=np;S.name=name;fitPage(false);relayout(false)}
 }
 function resetDocKeep(){const keep=S.sources;resetDoc();S.sources=keep}
 async function insertBlank(){
@@ -792,14 +792,18 @@ async function insertBlank(){
     const d=await PDFLib.PDFDocument.create();d.addPage([w,h]);
     const np=await addSource(await d.save(),'blank');
     if(S.pages.length){snapshot();S.pages.splice(S.cur+1,0,...np);relayout(true);setTimeout(()=>scrollToPage(S.cur+1),60)}
-    else{S.name='document.pdf';S.pages=np;fitWidth(false);relayout(false)}
+    else{S.name='document.pdf';S.pages=np;fitPage(false);relayout(false)}
   }catch(e){console.error(e);toast('Could not add a page')}
   unbusy();
 }
 
 /* ---------------- layout & render ---------------- */
 const els=new Map();let io=null;
-function fitWidth(doLayout=true){
+/* whole page on screen: page width, or less for tall pages like long receipts */
+function pageFitScale(){const v=$('#viewer');let mw=1,mh=1;S.pages.forEach(pg=>{const vp=srcPage(pg).getViewport({scale:1,rotation:rot(pg)});mw=Math.max(mw,vp.width);mh=Math.max(mh,vp.height)});
+  return Math.max(.1,Math.min(2,(v.clientWidth-24)/mw,(v.clientHeight-28)/mh))}
+function fitPage(doLayout=true){if(!S.pages.length)return;S.scale=pageFitScale();S.fit='page';if(doLayout)relayout(false)}
+function fitWidth(doLayout=true){S.fit='width';
   if(!S.pages.length)return;
   const v=$('#viewer');let mw=1;
   S.pages.forEach(pg=>{mw=Math.max(mw,srcPage(pg).getViewport({scale:1,rotation:rot(pg)}).width)});
@@ -1492,7 +1496,7 @@ $('#bSave').onclick=openSave;
 $('#bUndo').onclick=undo;$('#bRedo').onclick=redo;
 $('#zIn').onclick=()=>{S.scale=Math.min(5,S.scale*1.2);relayout(true)};
 $('#zOut').onclick=()=>{S.scale=Math.max(.25,S.scale/1.2);relayout(true)};
-$('#zFit').onclick=()=>fitWidth(true);
+$('#zFit').onclick=()=>{const pw=pageFitScale(),ww=fitScale(),same=Math.abs(pw-ww)/ww<.05;if(same||S.fit!=='page'||Math.abs(S.scale-pw)/pw>.03){fitPage(true);toast('Whole page',1200)}else{fitWidth(true);toast('Page width',1200)}};
 function updateUI(){
   $('#bUndo').disabled=!S.undo.length;$('#bRedo').disabled=!S.redo.length;$('#bSave').disabled=!S.pages.length;$('#bPages').disabled=!S.pages.length;
   $('#zoom').style.display=S.pages.length?'flex':'none';
@@ -2460,7 +2464,7 @@ $('#libGrid').addEventListener('click',e=>{const m=e.target.closest('[data-more]
 async function libOpenDoc(d){
   busy('Opening…');
   try{resetDoc();const np=await addSource(await d.blob.arrayBuffer(),d.name+'.pdf');S.pages=np;S.name=d.name+'.pdf';S.libId=d.id;S.libFolder=d.folder;
-    setTool('hand');fitWidth(false);relayout(false);$('#lib').classList.remove('on');$('#viewer').scrollTop=0;toast(`${d.name} · pick a tool below to edit`)}
+    setTool('hand');fitPage(false);relayout(false);$('#lib').classList.remove('on');$('#viewer').scrollTop=0;toast(`${d.name} · pick a tool below to edit`)}
   catch(e){console.error(e);toast('Could not open it')}
   unbusy();
 }
@@ -2633,7 +2637,7 @@ $('#libSelShare').onclick=()=>{const ds=libSelDocs().filter(d=>d.blob);if(!ds.le
     catch(e){console.error(e);unbusy();toast('Could not combine those')}}};
 $('#libSelMerge').onclick=async()=>{const ds=libSelDocs();if(ds.length<2){toast('Select two or more to combine');return}
   busy('Combining…');try{const out=await PDFLib.PDFDocument.create();for(const d of ds){const src=await PDFLib.PDFDocument.load(await d.blob.arrayBuffer(),{ignoreEncryption:true});(await out.copyPages(src,src.getPageIndices())).forEach(p=>out.addPage(p))}
-    const b=await out.save();resetDoc();S.pages=await addSource(b,'combined');S.name=`Combined ${ds.length} documents.pdf`;fitWidth(false);relayout(false);libSelEnd();$('#lib').classList.remove('on');unbusy();toast(`Combined ${ds.length} documents. Save it to keep it.`,4000)}
+    const b=await out.save();resetDoc();S.pages=await addSource(b,'combined');S.name=`Combined ${ds.length} documents.pdf`;fitPage(false);relayout(false);libSelEnd();$('#lib').classList.remove('on');unbusy();toast(`Combined ${ds.length} documents. Save it to keep it.`,4000)}
   catch(e){console.error(e);unbusy();toast('Could not combine those')}};
 
 $('#fRestore').onchange=e=>{const f=e.files&&e.files[0];if(f)libRestore(f)};
@@ -3223,7 +3227,7 @@ function zoomAt(ns,x,y){
     {const hit=linkAt(e.clientX,e.clientY);if(hit){last=null;followLink(hit);return}}
     const now=Date.now();
     if(last&&now-last.t<320&&Math.hypot(e.clientX-last.x,e.clientY-last.y)<40){last=null;
-      const f=fitScale();if(Math.abs(S.scale-f)/f<.08)zoomAt(f*2,e.clientX,e.clientY);else zoomAt(f,e.clientX,e.clientY);return}
+      const f=pageFitScale(),w=fitScale();if(Math.abs(S.scale-f)/f<.08){S.fit='';zoomAt(w/f>1.3?w:f*2,e.clientX,e.clientY)}else{S.fit='page';zoomAt(f,e.clientX,e.clientY)}return}
     last={t:now,x:e.clientX,y:e.clientY};
   },{capture:true});
 })();
