@@ -174,6 +174,7 @@ input.fo{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:point
 .xr{display:flex;gap:12px;align-items:center;background:#fff;border-radius:12px;padding:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);cursor:pointer}
 .xr .xth{width:46px;height:60px;flex:none}
 .xr.pk{outline:2px solid var(--acc);background:#f5f7ff}
+.xr,.xr *,#shTable .xth,#shTable .xth img{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 .xck{width:24px;height:24px;flex:none;border-radius:50%;border:2px solid #9ca3af;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;font-weight:800}
 .pk .xck{background:var(--acc);border-color:var(--acc)}
 .dup{display:inline-block;font-size:11px;font-weight:700;color:#92400e;background:#fef3c7;border-radius:999px;padding:2px 8px;margin-top:3px;width:max-content}
@@ -382,7 +383,7 @@ body.ci #menu [data-m=region] .ic{color:var(--c-sky)}body.ci #menu [data-m=rctog
     <hr>
     <button data-m="about"><span class="ic" data-i="info"></span>About, terms &amp; licences</button>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-17 · 74<br>© 2026 Tommy Chieng. All rights reserved.</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-17 · 75<br>© 2026 Tommy Chieng. All rights reserved.</div>
   </div>
 </div>
 
@@ -445,7 +446,7 @@ body.ci #menu [data-m=region] .ic{color:var(--c-sky)}body.ci #menu [data-m=rctog
   <div style="display:flex;gap:8px;padding:10px 12px 0;flex-wrap:wrap"><button class="btn pri" id="shFill" style="display:none;align-items:center;gap:6px;height:36px"><span class="ic" data-i="wand"></span> Fill in missing</button><button class="btn" id="shView" style="height:36px">Table view</button><button class="btn" id="shSelect" style="height:36px">Select</button><button class="btn" id="shDups" style="height:36px;display:none;border-color:#f59e0b;color:#92400e"></button></div>
   <div style="flex:1;overflow:auto;padding:10px 0 20px">
     <div id="shTable" style="overflow-x:auto;padding:0 10px"></div>
-    <p class="small" style="padding:4px 14px">Tap a receipt to check or change its details (or a cell, in table view). Changes save automatically. Tap the picture to open the receipt itself.</p>
+    <p class="small" style="padding:4px 14px">Tap a receipt to check or change its details (or a cell, in table view). Changes save automatically. Tap the picture to open the receipt itself. Press and hold a receipt to select several.</p>
     <div id="shSummary" style="padding:0 10px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px"></div>
   </div>
   <div id="shSelBar"><b id="shSelN" style="flex:1">0 selected</b><button class="btn" id="shSelAll" style="height:40px;background:#fff;color:#111827;border-color:#fff">Select all</button><button class="btn" id="shSelDel" style="height:40px;background:#dc2626;border-color:#dc2626;color:#fff">Delete</button></div>
@@ -3004,9 +3005,22 @@ async function fillMissing(){
 }
 $('#libSheet').onclick=openSheet;
 $('#shTable').addEventListener('click',e=>{
+  if(Date.now()-(SH.lpAt||0)<700){SH.lpAt=0;e.stopPropagation();e.preventDefault();return}   // the lift that ends a press-and-hold
   if(SH.sel){const r=e.target.closest('[data-row]')||e.target.closest('[data-pick]');if(!r)return;const id=r.dataset.row||r.dataset.pick;e.stopPropagation();e.preventDefault();if(SH.sel.has(id))SH.sel.delete(id);else SH.sel.add(id);renderSheet();return}
   if(e.target.closest('[data-open]'))return;const r=e.target.closest('[data-row]');if(!r)return;const d=SH.rows.find(x=>x.id===r.dataset.row);if(d)openReceiptDetails(d,false,()=>{if($('#sheet').classList.contains('on')){SH.rows=SH.rows.filter(x=>LIB.docs.some(y=>y.id===x.id));renderSheet()}})},true);
 $('#shSelect').onclick=()=>{SH.sel=SH.sel?null:new Set();renderSheet()};
+/* press and hold a receipt to start selecting (like Gmail/Photos); a normal tap still opens it */
+(function(){const T=$('#shTable');let tm=null,sx=0,sy=0,id=null,fired=0;
+  const rowId=t=>{if(!t||t.closest('input,select,textarea,th'))return null;const r=t.closest('[data-row]')||t.closest('tr[data-id]');return r?(r.dataset.row||r.dataset.id):null};
+  const stop=()=>{clearTimeout(tm);tm=null};
+  T.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse'&&e.button!==0)return;id=rowId(e.target);if(!id)return;sx=e.clientX;sy=e.clientY;stop();
+    tm=setTimeout(()=>{tm=null;if(!SH.sel)SH.sel=new Set();SH.sel.add(id);fired=Date.now();SH.lpAt=fired;try{navigator.vibrate&&navigator.vibrate(30)}catch(x){}renderSheet()},480)});
+  T.addEventListener('pointermove',e=>{if(tm&&Math.hypot(e.clientX-sx,e.clientY-sy)>10)stop()});
+  ['pointerup','pointercancel','pointerleave'].forEach(n=>T.addEventListener(n,stop));
+  T.addEventListener('scroll',stop,true);
+  // the tap that ends a long press must not also open or untick the receipt
+  T.addEventListener('contextmenu',e=>{if(rowId(e.target))e.preventDefault()});
+})();
 $('#shSelAll').onclick=()=>{const v=shVisible();if(v.length&&v.every(d=>SH.sel.has(d.id)))SH.sel=new Set();else v.forEach(d=>SH.sel.add(d.id));renderSheet()};
 $('#shSelDel').onclick=()=>shDeleteSel(SH.sel||[]);
 $('#shDups').onclick=()=>{const ex=shExtraDupes(SH.dup||shDupes());SH.sel=new Set(ex);renderSheet();toast(`Selected ${ex.size} likely extra cop${ex.size>1?'ies':'y'}, keeping the most complete one of each. Check, then tap Delete.`,5000)};
