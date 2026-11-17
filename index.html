@@ -44,6 +44,7 @@ svg{width:20px;height:20px;flex:none}
 .pg .ov{touch-action:none;cursor:crosshair}
 #pages.hand .ov{touch-action:pan-x pan-y;cursor:grab}
 #pages.select .ov{cursor:default}
+.plink{position:absolute;pointer-events:none;border-bottom:2px solid rgba(37,99,235,.45);background:rgba(37,99,235,.07);border-radius:2px}
 .pnum{position:absolute;bottom:-1px;right:-1px;transform:translateY(100%);font-size:11px;color:var(--muted);padding:2px 2px}
 #empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px}
 .hero{max-width:420px;width:100%;text-align:center}
@@ -395,7 +396,7 @@ body.ci #menu [data-m=region] .ic{color:var(--c-sky)}body.ci #menu [data-m=rctog
     <hr>
     <button data-m="about"><span class="ic" data-i="info"></span>About, terms &amp; licences</button>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-17 · 78<br>© 2026 Tommy Chieng. All rights reserved.</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-17 · 79<br>© 2026 Tommy Chieng. All rights reserved.</div>
   </div>
 </div>
 
@@ -834,7 +835,26 @@ async function renderPage(e){
   const p=srcPage(pg);const hv=p.getViewport({scale:S.scale*e.dpr,rotation:rot(pg)});
   e.c1.width=Math.floor(hv.width);e.c1.height=Math.floor(hv.height);
   try{e.task=p.render({canvasContext:e.c1.getContext('2d'),viewport:hv});await e.task.promise}catch(err){}
+  // links in the PDF: remember where they are and mark them lightly
+  try{const an=await p.getAnnotations({intent:'display'});e.links=an.filter(a=>a.subtype==='Link'&&a.rect&&(a.url||a.unsafeUrl||a.dest)).map(a=>({rect:a.rect,url:a.url||a.unsafeUrl||'',dest:a.dest||null}));
+    e.el.querySelectorAll('.plink').forEach(x=>x.remove());
+    for(const L of e.links){const a1=e.vp.convertToViewportPoint(L.rect[0],L.rect[1]),a2=e.vp.convertToViewportPoint(L.rect[2],L.rect[3]),r=[a1[0],a1[1],a2[0],a2[1]],d=document.createElement('div');d.className='plink';
+      d.style.left=Math.min(r[0],r[2])+'px';d.style.top=Math.min(r[1],r[3])+'px';d.style.width=Math.abs(r[2]-r[0])+'px';d.style.height=Math.abs(r[3]-r[1])+'px';e.el.appendChild(d)}}catch(err){e.links=[]}
 }
+/* a tap on a link (Scroll tool): web links ask first, links inside the document jump to the page */
+function linkAt(clientX,clientY){
+  for(const e of els.values()){if(!e.links||!e.links.length)continue;const r=e.el.getBoundingClientRect();if(clientX<r.left||clientX>r.right||clientY<r.top||clientY>r.bottom)continue;
+    const sx=(clientX-r.left)*(e.vp.width/r.width),sy=(clientY-r.top)*(e.vp.height/r.height),P=e.vp.convertToPdfPoint(sx,sy);
+    for(const L of e.links){const[x1,y1,x2,y2]=L.rect,pad=4;if(P[0]>=Math.min(x1,x2)-pad&&P[0]<=Math.max(x1,x2)+pad&&P[1]>=Math.min(y1,y2)-pad&&P[1]<=Math.max(y1,y2)+pad)return{e,L}}}
+  return null}
+async function followLink(hit){const{e,L}=hit,pg=getPg(e.id);
+  if(L.url){const u=String(L.url).trim();if(!/^(https?:|mailto:|tel:)/i.test(u)){toast('This link type can’t be opened from Folio');return}
+    let shown=u;try{const x=new URL(u);shown=x.protocol.startsWith('http')?x.host+(x.pathname!=='/'?x.pathname:''):u}catch(err){}
+    openModal(`<h3>Open this link?</h3><p style="word-break:break-all;margin:-4px 0 6px"><b>${esc(shown)}</b></p><p class="small" style="word-break:break-all">${esc(u)}</p><p class="small">It opens outside Folio. Only open links you trust.</p><div class="btns"><button class="btn" data-x>Cancel</button><button class="btn pri" id="lkGo">Open</button></div>`);
+    $('#lkGo').onclick=()=>{closeModal();try{window.open(u,'_blank','noopener,noreferrer')}catch(err){location.href=u}};return}
+  if(L.dest&&pg){try{const pdf=S.sources[pg.src].pdf;let d=L.dest;if(typeof d==='string')d=await pdf.getDestination(d);if(!Array.isArray(d)||!d[0])throw 0;
+      const idx=typeof d[0]==='object'?await pdf.getPageIndex(d[0]):+d[0],i=S.pages.findIndex(q=>q.src===pg.src&&q.idx===idx);
+      if(i<0){toast('That page isn’t in this document any more');return}scrollToPage(i);toast(`Page ${i+1}`)}catch(err){toast('Couldn’t follow that link')}}}
 function redrawAll(){els.forEach(drawOverlay)}
 
 /* ---------------- annotations: draw ---------------- */
@@ -929,6 +949,7 @@ function setSel(sel){
 function onDown(ev,e){
   if(PINCH.on||(ev.pointerType==='touch'&&!ev.isPrimary))return;
   const pg=getPg(e.id);if(!pg)return;const t=S.tool;
+  if(t==='hand'&&ev.pointerType==='mouse'){const hit=linkAt(ev.clientX,ev.clientY);if(hit){followLink(hit);return}}
   if(t==='hand'||t==='rotpage'){if(ev.pointerType==='mouse'){const v=$('#viewer');drag={mode:'pan',e,x:ev.clientX,y:ev.clientY,sl:v.scrollLeft,st:v.scrollTop};e.c2.setPointerCapture(ev.pointerId)}return}
   ev.preventDefault();
   const vp=e.vp,[sx,sy]=loc(ev,e),P=vp.convertToPdfPoint(sx,sy);
@@ -2468,6 +2489,38 @@ async function libShare(d){
   toast("Sharing isn't available here, so it was downloaded instead");offerDownload(d.name+'.pdf',new Uint8Array(await d.blob.arrayBuffer()));
 }
 /* ---------------- reduce file size of saved PDFs ---------------- */
+/* Reduce size, keeping everything that makes a PDF a PDF (links, form fields, bookmarks, sharp text):
+   only the pictures inside are made smaller and re-compressed. */
+async function shrinkSmart(bytes,qual,onImg){
+  const L=PDFLib,[maxPx,q]=qual==='small'?[1600,.7]:[2400,.8];
+  const doc=await L.PDFDocument.load(bytes,{ignoreEncryption:true,updateMetadata:false}),ctx=doc.context;
+  const N=k=>L.PDFName.of(k),num=v=>v&&v.asNumber?v.asNumber():0;
+  const imgs=ctx.enumerateIndirectObjects().filter(([,o])=>o instanceof L.PDFRawStream&&String(o.dict.get(N('Subtype')))==='/Image');
+  let done=0;
+  for(const[ref,o] of imgs){done++;onImg&&onImg(done,imgs.length);await tick();
+    try{const D=o.dict,W=num(D.lookup(N('Width'))),H=num(D.lookup(N('Height')));if(!W||!H||W*H<160000)continue;
+      if(D.get(N('ImageMask'))||D.get(N('Decode'))||D.get(N('Mask')))continue;
+      const fl=D.lookup(N('Filter')),filt=fl instanceof L.PDFArray?fl.asArray().map(String).join(','):String(fl||'');
+      let cs=D.lookup(N('ColorSpace')),comps=0;
+      if(cs instanceof L.PDFName)comps={'/DeviceRGB':3,'/DeviceGray':1,'/DeviceCMYK':4}[String(cs)]||0;
+      else if(cs instanceof L.PDFArray&&String(cs.get(0))==='/ICCBased'){const st=ctx.lookup(cs.get(1));comps=st&&st.dict?num(st.dict.lookup(N('N'))):0}
+      let bmp=null;
+      if(filt==='/DCTDecode'){if(comps===4)continue;bmp=await createImageBitmap(new Blob([o.contents],{type:'image/jpeg'}))}
+      else if(filt==='/FlateDecode'&&(comps===3||comps===1)&&num(D.lookup(N('BitsPerComponent')))===8&&!D.get(N('DecodeParms'))){
+        const raw=L.decodePDFRawStream(o).decode();if(raw.length<W*H*comps)continue;
+        const id=new ImageData(W,H),px=id.data;for(let i=0,j=0;i<W*H;i++){if(comps===3){px[j]=raw[i*3];px[j+1]=raw[i*3+1];px[j+2]=raw[i*3+2]}else{px[j]=px[j+1]=px[j+2]=raw[i]}px[j+3]=255;j+=4}
+        bmp=await createImageBitmap(id)}
+      else continue;
+      const s=Math.min(1,maxPx/Math.max(W,H)),w=Math.max(1,Math.round(W*s)),h=Math.max(1,Math.round(H*s));
+      const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,w,h);x.imageSmoothingQuality='high';x.drawImage(bmp,0,0,w,h);try{bmp.close()}catch(e){}
+      const gray=comps===1;if(gray){const im=x.getImageData(0,0,w,h),p=im.data;for(let i=0;i<p.length;i+=4){const g=(p[i]*77+p[i+1]*150+p[i+2]*29)>>8;p[i]=p[i+1]=p[i+2]=g}x.putImageData(im,0,0)}
+      const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',q)),nb=new Uint8Array(await blob.arrayBuffer());c.width=c.height=0;
+      if(nb.length>=o.contents.length*.9)continue;                                  // not worth it: keep the original picture
+      const ns=ctx.stream(nb,{Type:'XObject',Subtype:'Image',Width:w,Height:h,ColorSpace:'DeviceRGB',BitsPerComponent:8,Filter:'DCTDecode'});
+      const sm=D.get(N('SMask'));if(sm)ns.dict.set(N('SMask'),sm);
+      ctx.assign(ref,ns)}catch(e){console.warn('shrink image',e)}}
+  return doc.save({useObjectStreams:true});
+}
 async function shrinkPdf(bytes,qual,onPage){
   const[mp,q]=qual==='small'?[2.2,.75]:[5,.82],L=PDFLib;
   const pdf=await pdfjsLib.getDocument({data:bytes.slice(),isEvalSupported:false}).promise;
@@ -2490,19 +2543,24 @@ async function shrinkPdf(bytes,qual,onPage){
 const fmtSize=b=>b>=1048576?(b/1048576).toFixed(1)+' MB':Math.max(1,Math.round(b/1024))+' KB';
 function askShrink(docs,done){
   const total=docs.reduce((a,d)=>a+(d.size||0),0);
-  openModal(`<h3>Reduce file size</h3><p class="small" style="margin-top:-6px">${docs.length>1?`${docs.length} documents · `:''}${fmtSize(total)} now. Each page is re-saved as a picture at the size you choose. The words stay searchable and editable.</p>
-   <button class="big" id="shS" style="display:flex;gap:12px;align-items:center;width:100%;padding:14px;border:1px solid var(--line);border-radius:12px;background:#fff;text-align:left;margin-bottom:10px"><span><b>Small</b> · best for email<br><small style="color:var(--muted)">About 150 DPI on a page, roughly 200–400 KB each</small></span></button>
-   <button class="big" id="shM" style="display:flex;gap:12px;align-items:center;width:100%;padding:14px;border:1px solid var(--line);border-radius:12px;background:#fff;text-align:left"><span><b>Standard</b><br><small style="color:var(--muted)">About 230 DPI on a page, roughly 500–900 KB each</small></span></button>
-   <p class="small">Best for scans. PDFs made on a computer (with real text) are usually small already, and Folio keeps the original if shrinking doesn't help.</p>
+  const B='display:flex;gap:12px;align-items:center;width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:#fff;text-align:left;margin-bottom:8px';
+  openModal(`<h3>Reduce file size</h3><p class="small" style="margin-top:-6px">${docs.length>1?`${docs.length} documents · `:''}${fmtSize(total)} now</p>
+   <p class="small" style="margin:8px 0 6px"><b>Keeps links, forms and sharp text</b> · shrinks only the pictures inside</p>
+   <button class="big" id="shS" style="${B}"><span><b>Small</b> · best for email<br><small style="color:var(--muted)">Pictures and scans at about 150 DPI</small></span></button>
+   <button class="big" id="shM" style="${B}"><span><b>Standard</b><br><small style="color:var(--muted)">Pictures and scans at about 230 DPI, sharper</small></span></button>
+   <p class="small" style="margin:12px 0 6px"><b>Maximum compression</b></p>
+   <button class="big" id="shX" style="${B}"><span><b>Pages as pictures</b><br><small style="color:#b45309">Links, fillable fields and bookmarks stop working, and text gets slightly soft. Words stay searchable.</small></span></button>
+   <p class="small">If a file doesn't get at least 10% smaller, Folio keeps the original.</p>
    <div class="btns"><button class="btn" data-x>Cancel</button></div>`);
   const run=async qual=>{closeModal();let before=0,after=0,changed=0;
     for(let k=0;k<docs.length;k++){const d=docs[k];busy(`Shrinking ${docs.length>1?`document ${k+1} of ${docs.length}, `:''}page 1…`);
       try{const orig=new Uint8Array(await d.blob.arrayBuffer());before+=orig.length;
-        const nb=await shrinkPdf(orig,qual,(i,n)=>{$('#busyMsg').textContent=`Shrinking ${docs.length>1?`document ${k+1} of ${docs.length}, `:''}page ${i} of ${n}…`});
+        const lab=docs.length>1?`document ${k+1} of ${docs.length}, `:'';
+        const nb=qual==='max'?await shrinkPdf(orig,'small',(i,n)=>{$('#busyMsg').textContent=`Shrinking ${lab}page ${i} of ${n}…`}):await shrinkSmart(orig,qual,(i,n)=>{$('#busyMsg').textContent=`Shrinking ${lab}picture ${i} of ${n}…`});
         if(nb.length<orig.length*.9){const keep=d.receipt;await libSave(d.name,d.folder,nb,d.id);if(keep){const nd=await libGet(d.id);if(nd&&!nd.receipt){nd.receipt=keep;await libPut(nd)}}rvCache.delete(d.id);after+=nb.length;changed++}else after+=orig.length}
       catch(e){console.error(e);toast(`Couldn't shrink “${d.name}”`)}}
-    unbusy();toast(changed?`Reduced from ${fmtSize(before)} to ${fmtSize(after)}`:'Already as small as it can usefully be, so nothing was changed',4500);done&&done()};
-  $('#shS').onclick=()=>run('small');$('#shM').onclick=()=>run('std');
+    unbusy();toast(changed?`Reduced from ${fmtSize(before)} to ${fmtSize(after)}`:qual==='max'?'Already as small as it can usefully be, so nothing was changed':'Already small: there are no big pictures to shrink, so nothing was changed. "Pages as pictures" can go further, but links and forms stop working.',6000);done&&done()};
+  $('#shS').onclick=()=>run('small');$('#shM').onclick=()=>run('std');$('#shX').onclick=()=>run('max');
 }
 async function libItemMenu(id){
   const d=LIB.docs.find(x=>x.id===id);if(!d)return;
@@ -3162,6 +3220,7 @@ function zoomAt(ns,x,y){
   v.addEventListener('pointerup',e=>{
     if(e.pointerType!=='touch'||!down||PINCH.on||S.tool!=='hand'||!S.pages.length){down=null;return}
     const moved=Math.hypot(e.clientX-down.x,e.clientY-down.y)>12||Date.now()-down.t>350;down=null;if(moved){last=null;return}
+    {const hit=linkAt(e.clientX,e.clientY);if(hit){last=null;followLink(hit);return}}
     const now=Date.now();
     if(last&&now-last.t<320&&Math.hypot(e.clientX-last.x,e.clientY-last.y)<40){last=null;
       const f=fitScale();if(Math.abs(S.scale-f)/f<.08)zoomAt(f*2,e.clientX,e.clientY);else zoomAt(f,e.clientX,e.clientY);return}
