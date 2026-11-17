@@ -173,6 +173,14 @@ input.fo{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:point
 .xl{display:flex;flex-direction:column;gap:8px}
 .xr{display:flex;gap:12px;align-items:center;background:#fff;border-radius:12px;padding:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);cursor:pointer}
 .xr .xth{width:46px;height:60px;flex:none}
+.xr.pk{outline:2px solid var(--acc);background:#f5f7ff}
+.xck{width:24px;height:24px;flex:none;border-radius:50%;border:2px solid #9ca3af;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;font-weight:800}
+.pk .xck{background:var(--acc);border-color:var(--acc)}
+.dup{display:inline-block;font-size:11px;font-weight:700;color:#92400e;background:#fef3c7;border-radius:999px;padding:2px 8px;margin-top:3px;width:max-content}
+tr.dupr td{background:#fffbeb}
+tr.pk td{background:#eef2ff}
+#shSelBar{display:none;gap:8px;align-items:center;padding:10px 12px;background:#111827;color:#fff}
+#shSelBar.on{display:flex}
 .xm{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .xm b{font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .xm span{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -374,7 +382,7 @@ body.ci #menu [data-m=region] .ic{color:var(--c-sky)}body.ci #menu [data-m=rctog
     <hr>
     <button data-m="about"><span class="ic" data-i="info"></span>About, terms &amp; licences</button>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-16 · 69<br>© 2026 Tommy Chieng. All rights reserved.</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-17 · 72<br>© 2026 Tommy Chieng. All rights reserved.</div>
   </div>
 </div>
 
@@ -434,12 +442,13 @@ body.ci #menu [data-m=region] .ic{color:var(--c-sky)}body.ci #menu [data-m=rctog
   <div class="sh"><button class="tb" id="shBack"><span class="ic" data-i="back"></span></button><b id="shTitle">Spreadsheet</b><span class="sp"></span><button class="btn pri" id="shCsv" style="height:36px">Export</button></div>
   <div id="shBar"></div>
   <div class="chips" id="shMonths"></div>
-  <div style="display:flex;gap:8px;padding:10px 12px 0;flex-wrap:wrap"><button class="btn pri" id="shFill" style="display:none;align-items:center;gap:6px;height:36px"><span class="ic" data-i="wand"></span> Fill in missing</button><button class="btn" id="shView" style="height:36px">Table view</button></div>
+  <div style="display:flex;gap:8px;padding:10px 12px 0;flex-wrap:wrap"><button class="btn pri" id="shFill" style="display:none;align-items:center;gap:6px;height:36px"><span class="ic" data-i="wand"></span> Fill in missing</button><button class="btn" id="shView" style="height:36px">Table view</button><button class="btn" id="shSelect" style="height:36px">Select</button><button class="btn" id="shDups" style="height:36px;display:none;border-color:#f59e0b;color:#92400e"></button></div>
   <div style="flex:1;overflow:auto;padding:10px 0 20px">
     <div id="shTable" style="overflow-x:auto;padding:0 10px"></div>
     <p class="small" style="padding:4px 14px">Tap a receipt to check or change its details (or a cell, in table view). Changes save automatically. Tap the picture to open the receipt itself.</p>
     <div id="shSummary" style="padding:0 10px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px"></div>
   </div>
+  <div id="shSelBar"><b id="shSelN" style="flex:1">0 selected</b><button class="btn" id="shSelAll" style="height:40px">Select all</button><button class="btn" id="shSelDel" style="height:40px;background:#dc2626;border-color:#dc2626;color:#fff">Delete</button></div>
 </div>
 <div id="scan">
   <div class="sh"><button class="tb" id="scBack"><span class="ic" data-i="back"></span></button><b id="scTitle">Scanner</b><span class="sp"></span><span id="scCount" class="small" style="color:#9ca3af;padding-right:8px"></span></div>
@@ -2707,7 +2716,11 @@ function openReceiptDetails(d,isNew,after){
    <div class="fld"><label>Category</label><select id="rcC"><option value=""></option>${cats.map(c=>`<option ${c===r.category?'selected':''}>${esc(c)}</option>`).join('')}<option>${NEWCAT}</option></select></div>
    ${inp('rcN','Description (what it was for)',r.note)}
    <button class="link small" id="rcTxtB" style="margin:2px 0 6px">See the text Folio read</button><textarea id="rcTxt" readonly rows="8" style="display:none;font-size:12px;margin-bottom:8px"></textarea>
-   <div class="btns"><button class="btn" data-x>${isNew?'Skip':'Cancel'}</button><button class="btn pri" id="rcOk">Save details</button></div>`);
+   <div class="btns"><button class="btn" id="rcDel" style="margin-right:auto;color:#dc2626;border-color:#fecaca">${icon('trash')} Delete</button><button class="btn" data-x>${isNew?'Skip':'Cancel'}</button><button class="btn pri" id="rcOk">Save details</button></div>`);
+  {let armed=false;$('#rcDel').onclick=async()=>{if(!armed){armed=true;$('#rcDel').innerHTML=icon('trash')+' Tap again to delete';return}
+    try{await libDel(d.id);if(S.libId===d.id)S.libId=null;LIB.docs=await libAll()}catch(e){toast('Could not delete');return}closeModal();toast('Receipt deleted');
+    if($('#sheet').classList.contains('on')){SH.rows=SH.rows.filter(x=>x.id!==d.id);if(SH.rows.length)renderSheet();else{$('#sheet').classList.remove('on');renderLib()}}else if($('#lib').classList.contains('on'))renderLib();
+    if(after)setTimeout(after,250)}}
   if(after){const x=document.querySelector('#modal [data-x]');if(x)x.addEventListener('click',()=>setTimeout(after,250))}
   const setF=(id,v,force)=>{const el=$('#'+id);if(el&&v&&(force||!el.value))el.value=v};
   const fill=(rr,force)=>{setF('rcV',rr.vendor,force);setF('rcD',rr.date,force);setF('rcS',rr.subtotal,force);setF('rcT',rr.total,force);setF('rcX',rr.tax,force);setF('rcG',rr.tip,force);
@@ -2886,7 +2899,7 @@ const PAYS=['','Visa','Mastercard','Amex','Debit','Cash','Apple Pay','Google Pay
 const SHCOLS=[['date','Date'],['vendor','Store'],['note','Description'],['category','Category'],['payment','Paid with'],['subtotal','Subtotal'],['tax','Tax'],['total','Bill total'],['tip','Tip'],['charged','Charged']];
 const money=v=>fmtMoney(v);
 function openSheet(){
-  SH.rows=LIB.docs.filter(d=>!LIB.folder||d.folder===LIB.folder);
+  SH.sel=null;SH.rows=LIB.docs.filter(d=>!LIB.folder||d.folder===LIB.folder);
   if(!SH.rows.length){toast('This folder is empty');return}
   SH.month='';$('#shTitle').textContent=(LIB.folder||'All documents')+' · spreadsheet';$('#sheet').classList.add('on');renderSheet();
 }
@@ -2897,17 +2910,40 @@ function shVisible(){
   return r;
 }
 const shIsList=()=>SH.view?SH.view==='list':innerWidth<760;
+SH.sel=null;
+/* possible duplicates: the same receipt scanned twice (very similar text), or same date + same amount */
+function shDupes(){
+  const toks=d=>{if(d._tk&&d._tkSrc===d.text)return d._tk;const t=new Set(((d.text||'').toLowerCase().match(/[a-z0-9][a-z0-9.,$-]{2,}/g)||[]));Object.defineProperty(d,'_tk',{value:t,writable:true,configurable:true});Object.defineProperty(d,'_tkSrc',{value:d.text,writable:true,configurable:true});return t};
+  const map=new Map(),rows=SH.rows;
+  for(let i=0;i<rows.length;i++)for(let j=i+1;j<rows.length;j++){const a=rows[i],b=rows[j],ra=a.receipt||{},rb=b.receipt||{};let dup=false;
+    const A=toks(a),B=toks(b);if(A.size>=8&&B.size>=8){let n=0;for(const w of A)if(B.has(w))n++;if(n/(A.size+B.size-n)>=.55)dup=true}
+    if(!dup&&ra.date&&ra.date===rb.date){const ca=rcCharged(ra),cb=rcCharged(rb);if(ca>0&&Math.abs(ca-cb)<.01)dup=true}
+    if(dup){if(!map.has(a.id))map.set(a.id,new Set());if(!map.has(b.id))map.set(b.id,new Set());map.get(a.id).add(b.id);map.get(b.id).add(a.id)}}
+  return map}
+/* in each group of duplicates keep the most complete one (then the oldest); the rest are the extra copies */
+function shExtraDupes(map){const extra=new Set(),seen=new Set(),score=d=>{const r=d.receipt||{};return(r.vendor?1:0)+(r.date?2:0)+(r.total?2:0)+(r.tax?1:0)+(r.category?1:0)};
+  for(const id of map.keys()){if(seen.has(id))continue;const grp=[],st=[id];while(st.length){const x=st.pop();if(seen.has(x))continue;seen.add(x);grp.push(x);for(const y of map.get(x)||[])st.push(y)}
+    const docs=grp.map(g=>SH.rows.find(d=>d.id===g)).filter(Boolean).sort((a,b)=>score(b)-score(a)||a.created-b.created);docs.slice(1).forEach(d=>extra.add(d.id))}
+  return extra}
+function shSelUI(){const on=!!SH.sel;$('#shSelBar').classList.toggle('on',on);$('#shSelect').textContent=on?'Cancel':'Select';
+  if(on){const n=SH.sel.size;$('#shSelN').textContent=`${n} selected`;$('#shSelDel').disabled=!n;$('#shSelDel').style.opacity=n?1:.5}}
+async function shDeleteSel(ids){
+  ids=[...ids];if(!ids.length)return;const names=ids.map(id=>{const d=SH.rows.find(x=>x.id===id);return d?((d.receipt&&d.receipt.vendor)||d.name):''}).filter(Boolean);
+  openModal(`<h3>Delete ${ids.length} receipt${ids.length>1?'s':''}?</h3><p class="small" style="margin-top:-6px">${esc(names.slice(0,6).join(', '))}${names.length>6?` and ${names.length-6} more`:''}</p><p>They'll be removed from your Library and this spreadsheet. This can't be undone.</p><div class="btns"><button class="btn" data-x>Cancel</button><button class="btn" id="shDelGo" style="background:#dc2626;border-color:#dc2626;color:#fff">Delete</button></div>`);
+  $('#shDelGo').onclick=async()=>{closeModal();busy('Deleting…');try{for(const id of ids){await libDel(id);if(S.libId===id)S.libId=null}}catch(e){console.error(e)}unbusy();
+    SH.rows=SH.rows.filter(d=>!ids.includes(d.id));SH.sel=null;try{LIB.docs=await libAll()}catch(e){}toast(`Deleted ${ids.length} receipt${ids.length>1?'s':''}`);if(!SH.rows.length){$('#sheet').classList.remove('on');renderLib();return}renderSheet()}}
 function renderSheet(){
   const months=[...new Set(SH.rows.map(d=>((d.receipt||{}).date||'').slice(0,7)).filter(Boolean))].sort();
   const mName=m=>{const[y,mo]=m.split('-');return new Date(+y,+mo-1,1).toLocaleDateString(undefined,{month:'short',year:'numeric'})};
   $('#shMonths').innerHTML=`<button data-m="" class="${SH.month===''?'on':''}">All months</button>`+months.map(m=>`<button data-m="${m}" class="${SH.month===m?'on':''}">${mName(m)}</button>`).join('');
   const miss=SH.rows.filter(d=>!d.receipt||!d.receipt.total).length;$('#shFill').style.display=miss?'flex':'none';$('#shFill').lastChild.textContent=` Fill in missing (${miss})`;
   $('#shView').textContent=shIsList()?'Table view':'List view';
+  SH.dup=shDupes();{const ex=shExtraDupes(SH.dup),b=$('#shDups');b.style.display=ex.size?'':'none';b.textContent=`Possible duplicates (${ex.size})`}shSelUI();
   if(shIsList()){renderSheetList();return}
   const rows=shVisible(),cats=allCats(SH.rows.map(d=>(d.receipt||{}).category));
   const sel=(f,opts,v)=>`<select data-f="${f}">${opts.map(o=>`<option ${o===v?'selected':''}>${esc(o)}</option>`).join('')}</select>`;
   $('#shTable').innerHTML=`<table class="xs"><thead><tr><th></th>${SHCOLS.map(([k,l])=>`<th data-k="${k}" class="${['tax','total','subtotal','tip','charged'].includes(k)?'num':''}">${l}${SH.sort===k?(SH.dir>0?' ▲':' ▼'):''}</th>`).join('')}</tr></thead><tbody>
-   ${rows.map(d=>{const r=d.receipt||{};return`<tr data-id="${d.id}"><td><button class="xth" data-open="${d.id}">${d.thumb?`<img src="${d.thumb}" alt="">`:'📄'}</button></td>
+   ${rows.map(d=>{const r=d.receipt||{},pk=SH.sel&&SH.sel.has(d.id),dp=SH.dup&&SH.dup.has(d.id);return`<tr data-id="${d.id}" class="${pk?'pk':''} ${dp?'dupr':''}"><td>${SH.sel?`<button class="xth" data-pick="${d.id}" aria-label="Select" style="display:flex;align-items:center;justify-content:center;background:none;border:0"><span class="xck" style="${pk?'background:var(--acc);border-color:var(--acc)':''}">${pk?'✓':''}</span></button>`:`<button class="xth" data-open="${d.id}">${d.thumb?`<img src="${d.thumb}" alt="">`:'📄'}</button>`}${dp?'<span class="dup" title="Possible duplicate">Dup?</span>':''}</td>
      <td><input type="date" data-f="date" value="${esc(r.date||'')}"></td><td><input data-f="vendor" value="${esc(r.vendor||'')}" placeholder="${esc(d.name)}"></td>
      <td><input data-f="note" value="${esc(r.note||'')}" placeholder="What was it for?"></td><td>${sel('category',['',...cats,NEWCAT],r.category||'')}</td><td>${sel('payment',PAYS,r.payment||'')}</td>
      <td class="num"><input data-f="subtotal" inputmode="decimal" value="${esc(r.subtotal||'')}"></td><td class="num"><input data-f="tax" inputmode="decimal" value="${esc(r.tax||'')}"></td><td class="num"><input data-f="total" inputmode="decimal" value="${esc(r.total||'')}"></td><td class="num"><input data-f="tip" inputmode="decimal" value="${esc(r.tip||'')}"></td><td class="num" data-charged="${d.id}" style="font-weight:600;padding:0 8px">${r.total||r.tip?money(rcCharged(r)):''}</td></tr>`}).join('')}
@@ -2935,15 +2971,15 @@ $('#shTable').addEventListener('change',e=>{const el=e.target.closest('[data-f]'
 $('#shTable').addEventListener('click',e=>{const th=e.target.closest('th[data-k]');if(th){const k=th.dataset.k;SH.dir=SH.sort===k?-SH.dir:1;SH.sort=k;renderSheet();return}
   const o=e.target.closest('[data-open]');if(o){const d=SH.rows.find(x=>x.id===o.dataset.open);if(d){$('#sheet').classList.remove('on');libOpenDoc(d)}}});
 $('#shMonths').addEventListener('click',e=>{const b=e.target.closest('[data-m]');if(!b)return;SH.month=b.dataset.m;renderSheet()});
-$('#shBack').onclick=()=>{$('#sheet').classList.remove('on');renderLib()};
+$('#shBack').onclick=()=>{SH.sel=null;$('#sheet').classList.remove('on');renderLib()};
 $('#shCsv').onclick=()=>openExport(shVisible());
 /* phone-friendly list view for the spreadsheet + fill-in-missing */
 SH.view=null;
 function renderSheetList(){
   const rows=shVisible();const dt=v=>{if(!v)return'';const[y,m,d]=v.split('-');return new Date(+y,+m-1,+d).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})};
-  $('#shTable').innerHTML=`<div class="xl">${rows.map(d=>{const r=d.receipt||{},missing=!r.total;return`<div class="xr" data-row="${d.id}">
-    <button class="xth" data-open="${d.id}">${d.thumb?`<img src="${d.thumb}" alt="">`:'📄'}</button>
-    <div class="xm"><b>${esc(r.vendor||d.name)}</b><span>${missing?'<em>Needs details · tap to fill in</em>':esc([dt(r.date),r.category,r.payment].filter(Boolean).join(' · '))}</span>${r.note?`<span>${esc(r.note)}</span>`:''}</div>
+  $('#shTable').innerHTML=`<div class="xl">${rows.map(d=>{const r=d.receipt||{},missing=!r.total,pk=SH.sel&&SH.sel.has(d.id),dp=SH.dup&&SH.dup.has(d.id);return`<div class="xr ${pk?'pk':''}" data-row="${d.id}">
+    ${SH.sel?`<span class="xck">${pk?'✓':''}</span>`:''}<button class="xth" data-open="${d.id}">${d.thumb?`<img src="${d.thumb}" alt="">`:'📄'}</button>
+    <div class="xm"><b>${esc(r.vendor||d.name)}</b><span>${missing?'<em>Needs details · tap to fill in</em>':esc([dt(r.date),r.category,r.payment].filter(Boolean).join(' · '))}</span>${r.note?`<span>${esc(r.note)}</span>`:''}${dp?'<span class="dup">Possible duplicate</span>':''}</div>
     <div class="xa">${missing?'':`<b>${money(rcCharged(r))}</b>${+r.tip?`<span>incl. tip ${money(r.tip)}</span>`:''}${r.tax?`<span>${esc(REGION.tax)} ${money(r.tax)}</span>`:''}`}</div></div>`}).join('')}</div>`;
   shTotals();
 }
@@ -2958,7 +2994,13 @@ async function fillMissing(){
   unbusy();renderSheet();toast(done?`Filled in ${done} of ${todo.length}. Tap each one to check.`:'Couldn’t read those receipts. Tap each one to fill it in.',4500);
 }
 $('#libSheet').onclick=openSheet;
-$('#shTable').addEventListener('click',e=>{if(e.target.closest('[data-open]'))return;const r=e.target.closest('[data-row]');if(!r)return;const d=SH.rows.find(x=>x.id===r.dataset.row);if(d)openReceiptDetails(d,false)},true);
+$('#shTable').addEventListener('click',e=>{
+  if(SH.sel){const r=e.target.closest('[data-row]')||e.target.closest('[data-pick]');if(!r)return;const id=r.dataset.row||r.dataset.pick;e.stopPropagation();e.preventDefault();if(SH.sel.has(id))SH.sel.delete(id);else SH.sel.add(id);renderSheet();return}
+  if(e.target.closest('[data-open]'))return;const r=e.target.closest('[data-row]');if(!r)return;const d=SH.rows.find(x=>x.id===r.dataset.row);if(d)openReceiptDetails(d,false,()=>{if($('#sheet').classList.contains('on')){SH.rows=SH.rows.filter(x=>LIB.docs.some(y=>y.id===x.id));renderSheet()}})},true);
+$('#shSelect').onclick=()=>{SH.sel=SH.sel?null:new Set();renderSheet()};
+$('#shSelAll').onclick=()=>{const v=shVisible();if(v.every(d=>SH.sel.has(d.id)))SH.sel=new Set();else v.forEach(d=>SH.sel.add(d.id));renderSheet()};
+$('#shSelDel').onclick=()=>shDeleteSel(SH.sel||[]);
+$('#shDups').onclick=()=>{const ex=shExtraDupes(SH.dup||shDupes());SH.sel=new Set(ex);renderSheet();toast(`Selected ${ex.size} likely extra cop${ex.size>1?'ies':'y'}, keeping the most complete one of each. Check, then tap Delete.`,5000)};
 $('#shView').onclick=()=>{SH.view=shIsList()?'table':'list';renderSheet()};
 $('#shFill').onclick=fillMissing;
 
