@@ -1537,11 +1537,14 @@ function findQuadLines(d,w,h){
   return[by(p=>p[0]+p[1]),by(p=>-(p[0]-p[1])),by(p=>-(p[0]+p[1])),by(p=>p[0]-p[1])];
 }
 
-function detectQuad(c,strict,noLines){
+function detectQuad(c,strict,noLines,noPaper){
   const q=detectBright(c,strict);
   // a "page" that fills the whole frame usually means the surface itself was picked (white table, coloured cover on a grey desk), so look for the page's edges instead
   const W0=c.width,H0=c.height,atEdge=q.found&&q.filter(([a,b])=>a<W0*.015||b<H0*.015||a>W0*.985||b>H0*.985).length>=3;
-  if((q.found&&!atEdge)||noLines)return q;
+  if(q.found&&!atEdge)return q;
+  // the single brightest region was the surface (light bedding, glare on a floor) — look for the most paper-like region at several brightness levels
+  if(!noPaper)try{const P=findPaper(c);if(P)return P}catch(e){}
+  if(noLines)return q;
   try{const W=c.width,H=c.height,s=Math.min(1,256/Math.max(W,H)),w=Math.max(8,Math.round(W*s)),h=Math.max(8,Math.round(H*s));
     const t=document.createElement('canvas');t.width=w;t.height=h;const x=t.getContext('2d');x.drawImage(c,0,0,w,h);
     const L=findQuadLines(x.getImageData(0,0,w,h).data,w,h);
@@ -1550,6 +1553,59 @@ function detectQuad(c,strict,noLines){
       Q.found=true;Q.method='lines';return Q}}catch(e){console.warn(e)}
   if(atEdge){const f=q.slice();f.found=!strict;f.reason='edge';return f}
   return q;
+}
+/* paper search: tries several brightness cut-offs and keeps the region that looks most like a sheet or receipt
+   (solid, four-sided, clearly brighter than the area right around it, not cut off by the frame) */
+function findPaper(c){
+  const W=c.width,H=c.height,s=Math.min(1,320/Math.max(W,H)),w=Math.max(8,Math.round(W*s)),h=Math.max(8,Math.round(H*s));
+  const t=document.createElement('canvas');t.width=w;t.height=h;const x=t.getContext('2d');x.drawImage(c,0,0,w,h);
+  const d=x.getImageData(0,0,w,h).data,N=w*h,g=new Uint8Array(N),hist=new Uint32Array(256);
+  for(let i=0;i<N;i++){const j=i*4,r=d[j],gg=d[j+1],b=d[j+2],mx=Math.max(r,gg,b),mn=Math.min(r,gg,b);let v=(r*77+gg*150+b*29)>>8;v=Math.max(0,v-(mx-mn)*.6)|0;g[i]=v;hist[v]++}
+  const pct=p=>{let a=0;for(let k=0;k<256;k++){a+=hist[k];if(a>=N*p)return k}return 255};
+  const ths=[...new Set([.5,.6,.7,.78,.85,.9,.94,.97].map(pct))].filter(k=>k<250);
+  const lab=new Int32Array(N),qu=new Int32Array(N);let best=null;
+  const M=new Uint8Array(N),T=new Uint8Array(N);
+  // morphological close (radius 2): fills the gaps printed text leaves inside a receipt or page
+  const pass=(src,dst,horiz,mx)=>{for(let y=0;y<h;y++)for(let xx=0;xx<w;xx++){const k=y*w+xx;let v=src[k];
+    if(horiz){if(xx>0)v=mx?(v|src[k-1]):(v&src[k-1]);if(xx<w-1)v=mx?(v|src[k+1]):(v&src[k+1])}
+    else{if(y>0)v=mx?(v|src[k-w]):(v&src[k-w]);if(y<h-1)v=mx?(v|src[k+w]):(v&src[k+w])}dst[k]=v}};
+  const close=()=>{for(const mx of [1,1,0,0]){pass(M,T,true,mx);pass(T,M,false,mx)}};
+  for(const th of ths){lab.fill(0);let id=0;const st=[null];for(let i=0;i<N;i++)M[i]=g[i]>th?1:0;close();
+    for(let i=0;i<N;i++){if(lab[i]||!M[i])continue;id++;let qh=0,qt=0;qu[qt++]=i;lab[i]=id;
+      let cnt=0,x0=1e9,y0=1e9,x1=-1,y1=-1,tl=[0,0,1e9],tr=[0,0,-1e9],br=[0,0,-1e9],bl=[0,0,1e9];
+      while(qh<qt){const k=qu[qh++];cnt++;const kx=k%w,ky=(k/w)|0;
+        if(kx<x0)x0=kx;if(kx>x1)x1=kx;if(ky<y0)y0=ky;if(ky>y1)y1=ky;const s1=kx+ky,s2=kx-ky;
+        if(s1<tl[2])tl=[kx,ky,s1];if(s1>br[2])br=[kx,ky,s1];if(s2>tr[2])tr=[kx,ky,s2];if(s2<bl[2])bl=[kx,ky,s2];
+        if(kx>0&&!lab[k-1]&&M[k-1]){lab[k-1]=id;qu[qt++]=k-1}
+        if(kx<w-1&&!lab[k+1]&&M[k+1]){lab[k+1]=id;qu[qt++]=k+1}
+        if(k>=w&&!lab[k-w]&&M[k-w]){lab[k-w]=id;qu[qt++]=k-w}
+        if(k<N-w&&!lab[k+w]&&M[k+w]){lab[k+w]=id;qu[qt++]=k+w}}
+      st.push(cnt>=N*.008&&cnt<=N*.9?{id,cnt,x0,y0,x1,y1,Q:[tl,tr,br,bl].map(p=>[p[0],p[1]])}:null)}
+    for(const o of st){if(!o)continue;
+      if(o.x0<=1||o.y0<=1||o.x1>=w-2||o.y1>=h-2)continue;                       // cut off by the frame
+      const Q=o.Q,area=Math.abs((Q[0][0]*Q[1][1]-Q[1][0]*Q[0][1])+(Q[1][0]*Q[2][1]-Q[2][0]*Q[1][1])+(Q[2][0]*Q[3][1]-Q[3][0]*Q[2][1])+(Q[3][0]*Q[0][1]-Q[0][0]*Q[3][1]))/2;
+      if(area<N*.012||area>N*.92)continue;
+      // four-sided: the region must fill the quad, and almost nothing of it may stick out past the quad
+      let inQ=0;for(let yy=o.y0;yy<=o.y1;yy++)for(let xx=o.x0;xx<=o.x1;xx++){if(lab[yy*w+xx]!==o.id)continue;let ok=true;
+        for(let e=0;e<4;e++){const A=Q[e],B=Q[(e+1)%4];if((B[0]-A[0])*(yy+.5-A[1])-(B[1]-A[1])*(xx+.5-A[0])<-1.5*Math.hypot(B[0]-A[0],B[1]-A[1])){ok=false;break}}if(ok)inQ++}
+      const fill=inQ/area;if(fill<.9||inQ/o.cnt<.95)continue;
+      let bad=false;for(let k=0;k<4;k++){const a=Q[(k+3)%4],b=Q[k],cc=Q[(k+1)%4],v1=[a[0]-b[0],a[1]-b[1]],v2=[cc[0]-b[0],cc[1]-b[1]];
+        const ang=Math.acos(Math.max(-1,Math.min(1,(v1[0]*v2[0]+v1[1]*v2[1])/(Math.hypot(...v1)*Math.hypot(...v2)||1))))*180/Math.PI;if(ang<60||ang>120){bad=true;break}}
+      if(bad)continue;
+      const D=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]),w1=D(Q[0],Q[1]),w2=D(Q[3],Q[2]),h1=D(Q[0],Q[3]),h2=D(Q[1],Q[2]);
+      if(Math.min(w1,w2,h1,h2)<6||Math.max(w1,w2)/Math.min(w1,w2)>1.8||Math.max(h1,h2)/Math.min(h1,h2)>1.8)continue;
+      const ar=(w1+w2)/(h1+h2);if(ar<.12||ar>8)continue;
+      // opposite sides of a flat sheet seen from above stay close to parallel (a shadow line cutting across does not)
+      const ang2=(a1,b1,a2,b2)=>{const u=[b1[0]-a1[0],b1[1]-a1[1]],v=[b2[0]-a2[0],b2[1]-a2[1]];return Math.acos(Math.min(1,Math.abs(u[0]*v[0]+u[1]*v[1])/(Math.hypot(...u)*Math.hypot(...v)||1)))*180/Math.PI};
+      if(ang2(Q[0],Q[1],Q[3],Q[2])>14||ang2(Q[0],Q[3],Q[1],Q[2])>14)continue;
+      // brightness inside vs a ring just around it
+      const m=Math.max(3,Math.round(Math.min(o.x1-o.x0,o.y1-o.y0)*.25)),X0=Math.max(0,o.x0-m),Y0=Math.max(0,o.y0-m),X1=Math.min(w-1,o.x1+m),Y1=Math.min(h-1,o.y1+m);
+      let sIn=0,nIn=0,sOut=0,nOut=0;for(let yy=Y0;yy<=Y1;yy++)for(let xx=X0;xx<=X1;xx++){const k=yy*w+xx;if(lab[k]===o.id){sIn+=g[k];nIn++}else if(xx<o.x0||xx>o.x1||yy<o.y0||yy>o.y1){sOut+=g[k];nOut++}}
+      if(!nOut)continue;const con=sIn/nIn-sOut/nOut;if(con<25)continue;
+      const score=Math.sqrt(area/N)*Math.min(1,fill)*Math.min(1,con/60);
+      if(!best||score>best.score)best={score,Q}}}
+  if(!best)return null;
+  const R=best.Q.map(p=>[(p[0]+.5)/s,(p[1]+.5)/s]);R.found=true;R.method='paper';return R;
 }
 function detectBright(c,strict){
   const W=c.width,H=c.height,fb=[[W*.04,H*.04],[W*.96,H*.04],[W*.96,H*.96],[W*.04,H*.96]];
@@ -1583,7 +1639,7 @@ function detectBright(c,strict){
       const sq=area*s*s;if(bestN/sq<.86)return fb;                       // solid, rectangular blob
       let sIn=0,sAll=0;for(let i=0;i<N;i++){sAll+=g[i];if(lab[i]===bestId)sIn+=g[i]}
       const mIn=sIn/bestN,mOut=(sAll-sIn)/Math.max(1,N-bestN);if(mIn-mOut<28)return fb;   // clearly brighter than surroundings
-      const edge=Q.filter(([x,y])=>x<W*.015||y<H*.015||x>W*.985||y>H*.985).length;if(edge>=2){const f=fb.slice();f.reason='edge';return f} // not cut off by the frame
+      const edge=Q.filter(([x,y])=>x<W*.015||y<H*.015||x>W*.985||y>H*.985).length;if(edge>=2){if(area>W*H*.6)return fb;const f=fb.slice();f.reason='edge';return f} // not cut off by the frame
       for(let k=0;k<4;k++){const a=Q[(k+3)%4],b=Q[k],cc=Q[(k+1)%4],v1=[a[0]-b[0],a[1]-b[1]],v2=[cc[0]-b[0],cc[1]-b[1]];
         const ang=Math.acos(Math.max(-1,Math.min(1,(v1[0]*v2[0]+v1[1]*v2[1])/(Math.hypot(...v1)*Math.hypot(...v2)||1))))*180/Math.PI;if(ang<55||ang>125)return fb}
       const D=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]),w1=D(Q[0],Q[1]),w2=D(Q[3],Q[2]),h1=D(Q[0],Q[3]),h2=D(Q[1],Q[2]);
@@ -1977,7 +2033,7 @@ function liveTick(){
   const v=$('#lvVid');if(!v.videoWidth||LV.busy)return;
   const s=320/Math.max(v.videoWidth,v.videoHeight);lvSmall.width=Math.round(v.videoWidth*s);lvSmall.height=Math.round(v.videoHeight*s);
   lvSmall.getContext('2d').drawImage(v,0,0,lvSmall.width,lvSmall.height);
-  LV.n=(LV.n||0)+1;let q=detectQuad(lvSmall,true,true);if(!q.found&&q.reason!=='edge'){if(LV.n%2===0||!LV.lq)LV.lq=detectQuad(lvSmall,true,false);q=LV.lq}else LV.lq=null;LV.cut=q.reason==='edge'?(LV.cut||0)+1:0;const nq=q.found?q.map(p=>[p[0]/lvSmall.width,p[1]/lvSmall.height]):null;
+  LV.n=(LV.n||0)+1;let q=detectQuad(lvSmall,true,true);if(!q.found&&q.reason!=='edge'){if(LV.n%2===0||!LV.lq)LV.lq=detectQuad(lvSmall,true,false,true);q=LV.lq}else LV.lq=null;LV.cut=q.reason==='edge'?(LV.cut||0)+1:0;const nq=q.found?q.map(p=>[p[0]/lvSmall.width,p[1]/lvSmall.height]):null;
   if(!LV.armed&&LV.ref&&Date.now()-LV.capAt>1800){const g=grayThumb(lvSmall);let df=0;for(let i=0;i<576;i++)df+=Math.abs(g[i]-LV.ref[i]);if(df/576>16){LV.armed=true;LV.stable=0}}
   if(nq&&LV.prev){const d=Math.max(...nq.map((p,i)=>Math.hypot(p[0]-LV.prev[i][0],p[1]-LV.prev[i][1])));if(d<.018)LV.stable++;else{LV.stable=0;if(d>.1&&Date.now()-LV.capAt>1800)LV.armed=true}}
   else{LV.stable=0;if(!nq&&Date.now()-LV.capAt>1800)LV.armed=true}
