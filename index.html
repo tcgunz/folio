@@ -387,6 +387,7 @@ body.ci #menu [data-m=region] .ic{color:var(--c-sky)}body.ci #menu [data-m=rctog
     <button data-m="wm"><span class="ic" data-i="wmark"></span>Remove watermarks…</button>
     <button data-m="ocr"><span class="ic" data-i="text"></span>Recognize text (OCR)</button>
     <button data-m="alltext"><span class="ic" data-i="copy"></span>Copy all text</button>
+    <button data-m="word"><span class="ic" data-i="word"></span>Export as Word (.docx)…</button>
     <button data-m="form" id="mForm"><span class="ic" data-i="form"></span>Fill form fields</button>
     <hr>
     <button data-m="scan"><span class="ic" data-i="scan"></span>Scan document</button>
@@ -398,7 +399,7 @@ body.ci #menu [data-m=region] .ic{color:var(--c-sky)}body.ci #menu [data-m=rctog
     <hr>
     <button data-m="about"><span class="ic" data-i="info"></span>About, terms &amp; licences</button>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-17 · 84<br>© 2026 Tommy Chieng. All rights reserved.</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-18 · 85<br>© 2026 Tommy Chieng. All rights reserved.</div>
   </div>
 </div>
 
@@ -664,6 +665,7 @@ const IC={
  hand:"M18 11V6a2 2 0 0 0-4 0v4M14 10V4a2 2 0 0 0-4 0v6M10 10.5V6a2 2 0 0 0-4 0v8a8 8 0 0 0 16 0v-3a2 2 0 0 0-4 0",
  select:"M5 3l14 7-6.2 1.8L10 18z",
  text:"M5 7V5h14v2M9 19h6M12 5v14",
+ word:"M5 3h10l4 4v14H5zM8 10l1.5 7 2.5-5 2.5 5L16 10",
  pen:"M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z",
  hl:"m9 11-6 6v3h9l3-3M22 12l-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4",
  wo:"M7 21h11M4.5 15.5l9.6-9.6a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L11 19H8z",
@@ -1488,6 +1490,7 @@ function menuAct(m){
   if(m==='about')openAbout();
   if(m==='ocr')ocrDocument();
   if(m==='alltext')showAllText();
+  if(m==='word'){if(!S.pages.length){toast('Open a PDF first');return}askWord(S.name,()=>exportPdf())}
   if(m==='scan')openScanner();
   if(m==='save')openSave();
   if(m==='close'){resetDoc();relayout(false);closeDrawers()}
@@ -2498,6 +2501,116 @@ async function libShare(d){
     if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:d.name});return}}catch(e){if(e&&e.name==='AbortError')return}
   toast("Sharing isn't available here, so it was downloaded instead");offerDownload(d.name+'.pdf',new Uint8Array(await d.blob.arrayBuffer()));
 }
+/* ================= PDF → Word (.docx) =================
+   Rebuilds the document's text as Word paragraphs: headings, bold/italic, line breaks
+   joined into paragraphs, a page break per PDF page. Scans use their text layer
+   (or are read on the spot). Optionally adds a picture of each page. */
+const DOCX={
+  x:s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f￾￿]/g,''),
+  /* lines of one page from pdf.js text items */
+  async pageLines(page){
+    const tc=await page.getTextContent(),vp=page.getViewport({scale:1}),fonts={};
+    try{await page.getOperatorList()}catch(e){}
+    const fontOf=fn=>{if(fonts[fn])return fonts[fn];let f={};try{const o=page.commonObjs.get(fn);const nm=String(o&&(o.name||o.loadedName)||'');f={bold:!!(o&&(o.bold||o.black))||/bold|black|heavy|semibold|demi/i.test(nm),italic:!!(o&&o.italic)||/italic|oblique/i.test(nm)}}catch(e){}
+      const st=tc.styles&&tc.styles[fn];if(st&&/bold/i.test(st.fontFamily||''))f.bold=true;return fonts[fn]=f};
+    const items=[];
+    for(const it of tc.items){if(!it.str||!it.str.trim()&&!it.hasEOL)continue;const[a,b,c,d,e,f]=it.transform,size=Math.hypot(c,d)||it.height||10;
+      if(Math.abs(b)>Math.abs(a))continue;                       // skip sideways text (stamps, margins)
+      const F=fontOf(it.fontName);items.push({s:it.str.normalize('NFKC'),x:e,y:f,w:it.width,size,bold:F.bold,italic:F.italic})}
+    items.sort((p,q)=>Math.abs(q.y-p.y)>Math.min(p.size,q.size)*.5?q.y-p.y:p.x-q.x);
+    const lines=[];
+    for(const it of items){const L=lines[lines.length-1];
+      if(L&&Math.abs(L.y-it.y)<=Math.max(L.size,it.size)*.5){const gap=it.x-(L.x1);
+        if(gap>L.size*.2&&!/\s$/.test(L.runs[L.runs.length-1].s)&&!/^\s/.test(it.s))L.runs.push({s:' ',bold:it.bold,italic:it.italic});
+        L.runs.push(it);L.x1=Math.max(L.x1,it.x+it.w);L.size=Math.max(L.size,it.size)}
+      else lines.push({y:it.y,x0:it.x,x1:it.x+it.w,size:it.size,runs:[it]})}
+    for(const L of lines){L.text=L.runs.map(r=>r.s).join('').replace(/\s+/g,' ').trim();const ch=L.runs.reduce((a,r)=>a+r.s.trim().length,0)||1;
+      L.bold=L.runs.reduce((a,r)=>a+(r.bold?r.s.trim().length:0),0)/ch>.6}
+    return{lines:lines.filter(L=>L.text),W:vp.width,H:vp.height}},
+  /* lines from words read off a picture (scans without a text layer) */
+  ocrLines(words,W,H){const ws=words.map(w=>({s:w.t,x:w.x0*W,x1:w.x1*W,y:H-w.y1*H,size:Math.max(6,(w.y1-w.y0)*H*1.15)})).sort((p,q)=>Math.abs(q.y-p.y)>Math.min(p.size,q.size)*.5?q.y-p.y:p.x-q.x);
+    const lines=[];for(const w of ws){const L=lines[lines.length-1];if(L&&Math.abs(L.y-w.y)<=Math.max(L.size,w.size)*.5){L.runs.push({s:' '},{s:w.s});L.x1=w.x1}else lines.push({y:w.y,x0:w.x,x1:w.x1,size:w.size,runs:[{s:w.s}]})}
+    lines.forEach(L=>{L.text=L.runs.map(r=>r.s).join('').replace(/\s+/g,' ').trim();L.bold=false});return lines},
+  /* lines → paragraphs */
+  paras(lines,W){
+    if(!lines.length)return[];const sizes=[];lines.forEach(L=>{for(let k=0;k<L.text.length;k++)sizes.push(L.size)});sizes.sort((a,b)=>a-b);const body=sizes[Math.floor(sizes.length/2)]||11;
+    const out=[];let P=null;
+    const kind=L=>L.size>=body*1.6?'h1':L.size>=body*1.22||(L.bold&&L.text.length<70&&L.size>=body*.98&&!/[.,;:]$/.test(L.text))?'h2':'p';
+    for(let i=0;i<lines.length;i++){const L=lines[i],k=kind(L),prev=lines[i-1];
+      const bullet=/^([•●▪◦‣\-–*]|\(?\d{1,2}[.)]|\(?[a-z][.)])\s/.test(L.text);
+      const gap=prev?prev.y-L.y:0,lh=Math.max(L.size,prev?prev.size:L.size);
+      const same=P&&k==='p'&&P.kind==='p'&&!bullet&&gap>0&&gap<lh*1.75&&Math.abs(L.size-P.size)<=P.size*.15&&Math.abs(L.x0-P.lastX0)<lh*2.5;
+      if(same){const t=P.text;P.text=/[A-Za-z]-$/.test(t)&&/^[a-z]/.test(L.text)?t.slice(0,-1)+L.text:t+' '+L.text;P.runs.push({s:' '},...L.runs);P.lastX0=L.x0;P.x1=Math.max(P.x1,L.x1);P.lines++}
+      else{P={kind:k,text:L.text,runs:L.runs.slice(),size:L.size,x0:L.x0,x1:L.x1,lastX0:L.x0,lines:1,bullet,gapBefore:gap>lh*1.9};out.push(P)}}
+    for(const p of out){const c=(p.x0+p.x1)/2;p.center=p.lines===1&&Math.abs(c-W/2)<W*.06&&(p.x1-p.x0)<W*.7&&p.x0>W*.15}
+    return out},
+  runsXml(p){ // merge neighbouring runs with the same look
+    const rs=[];for(const r of p.runs){const s=r.s||'';if(!s)continue;const L=rs[rs.length-1];const b=!!r.bold&&p.kind==='p',i=!!r.italic;if(L&&L.b===b&&L.i===i)L.s+=s;else rs.push({s,b,i})}
+    if(rs.length){rs[0].s=rs[0].s.replace(/^\s+/,'');rs[rs.length-1].s=rs[rs.length-1].s.replace(/\s+$/,'')}
+    const sz=p.kind==='p'?`<w:sz w:val="${Math.max(16,Math.min(48,Math.round(p.size*2)))}"/>`:'';
+    return rs.filter(r=>r.s).map(r=>`<w:r><w:rPr>${r.b?'<w:b/>':''}${r.i?'<w:i/>':''}${sz}</w:rPr><w:t xml:space="preserve">${DOCX.x(r.s.replace(/\s+/g,' '))}</w:t></w:r>`).join('')},
+  parXml(p){const st=p.kind==='h1'?'Heading1':p.kind==='h2'?'Heading2':'';
+    return `<w:p><w:pPr>${st?`<w:pStyle w:val="${st}"/>`:''}${p.center?'<w:jc w:val="center"/>':''}${p.gapBefore&&!st?'<w:spacing w:before="160"/>':''}</w:pPr>${DOCX.runsXml(p)}</w:p>`},
+  imgXml(rid,id,cx,cy){return `<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${id}" name="Page ${id}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${id}" name="page${id}.jpg"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`},
+  /* pdfBytes → .docx bytes. opts: {pictures:bool, title, onPage(i,n), ocr:async(canvas)=>words|null} */
+  async build(pdfBytes,opts){
+    opts=opts||{};const pdf=await pdfjsLib.getDocument({data:pdfBytes.slice()}).promise,n=pdf.numPages,body=[],media=[];let W0=612,H0=792,textChars=0,ocrPages=0,noText=0;
+    const pages=[];
+    try{for(let i=1;i<=n;i++){opts.onPage&&opts.onPage(i,n);const page=await pdf.getPage(i),vp=page.getViewport({scale:1});if(i===1){W0=vp.width;H0=vp.height}
+        let{lines,W,H}=await DOCX.pageLines(page);const chars=lines.reduce((a,L)=>a+L.text.length,0);
+        let canvas=null;const render=async sc=>{const v=page.getViewport({scale:sc}),c=document.createElement('canvas');c.width=Math.round(v.width);c.height=Math.round(v.height);const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);await page.render({canvasContext:x,viewport:v}).promise;return c};
+        if(chars<20&&opts.ocr){try{canvas=await render(Math.min(3,2400/Math.max(vp.width,vp.height)));const words=await opts.ocr(canvas);if(words&&words.length){lines=DOCX.ocrLines(words,vp.width,vp.height);ocrPages++}}catch(e){console.warn('read page',e)}}
+        let pic=null;
+        if(opts.pictures||lines.length===0){if(!canvas||canvas.width>2000)canvas=await render(Math.min(2,1500/Math.max(vp.width,vp.height)));
+          const blob=await new Promise(r=>canvas.toBlob(r,'image/jpeg',.82));pic={data:new Uint8Array(await blob.arrayBuffer()),ar:canvas.height/canvas.width}}
+        pages.push({lines,W:W||vp.width,H:H||vp.height,pic});page.cleanup();await tick()}
+      // watermarks: the same big text on most pages (e.g. CONFIDENTIAL, DRAFT) is left out
+      if(pages.length>1){const cnt={},key=L=>L.text.toLowerCase().replace(/\s+/g,' ');
+        pages.forEach(pg=>{const seen=new Set();pg.lines.forEach(L=>{const k=key(L);if(!seen.has(k)){seen.add(k);cnt[k]=(cnt[k]||0)+1}})});
+        pages.forEach(pg=>{const sz=pg.lines.map(L=>L.size).sort((a,b)=>a-b),med=sz[Math.floor(sz.length/2)]||11;
+          pg.lines=pg.lines.filter(L=>!(L.y>pg.H*.2&&L.y<pg.H*.8&&L.size>=med*1.8&&L.text.length<=40&&cnt[key(L)]>=Math.max(2,pages.length*.6)))})}
+      pages.forEach((pg,i)=>{const ps=DOCX.paras(pg.lines,pg.W);textChars+=ps.reduce((a,p)=>a+p.text.length,0);if(!ps.length)noText++;
+        if(i>0)body.push('<w:p><w:r><w:br w:type="page"/></w:r></w:p>');
+        if(pg.pic){const k=media.length+1;media.push({name:`word/media/page${k}.jpg`,data:pg.pic.data});
+          const maxW=(W0/72-2)*914400,maxH=(H0/72-2.2)*914400*(ps.length?.62:1);let cx=maxW,cy=cx*pg.pic.ar;if(cy>maxH){cy=maxH;cx=cy/pg.pic.ar}
+          body.push(DOCX.imgXml('rImg'+k,k,Math.round(cx),Math.round(cy)))}
+        for(const p of ps)body.push(DOCX.parXml(p))})}
+    finally{try{pdf.destroy()}catch(e){}}
+    const tw=v=>Math.round(v*20),sect=`<w:sectPr><w:pgSz w:w="${tw(W0)}" w:h="${tw(H0)}"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>`;
+    const NS='xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"';
+    const doc=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:document ${NS}><w:body>${body.join('')}${sect}</w:body></w:document>`;
+    const styles=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:eastAsia="Calibri" w:cs="Calibri"/><w:sz w:val="22"/><w:lang w:val="en-CA"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="120" w:line="264" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>
+<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>
+<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="240" w:after="120"/><w:outlineLvl w:val="0"/></w:pPr><w:rPr><w:b/><w:sz w:val="36"/></w:rPr></w:style>
+<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="200" w:after="80"/><w:outlineLvl w:val="1"/></w:pPr><w:rPr><w:b/><w:sz w:val="28"/></w:rPr></w:style></w:styles>`;
+    const rels=media.map((m,k)=>`<Relationship Id="rImg${k+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/page${k+1}.jpg"/>`).join('');
+    const enc=t=>new TextEncoder().encode(t),now=new Date().toISOString().replace(/\.\d+Z$/,'Z');
+    const files=[
+      {name:'[Content_Types].xml',data:enc(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="jpg" ContentType="image/jpeg"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>`)},
+      {name:'_rels/.rels',data:enc(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/></Relationships>`)},
+      {name:'docProps/core.xml',data:enc(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${DOCX.x(opts.title||'Document')}</dc:title><dc:creator>Folio</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">${now}</dcterms:created></cp:coreProperties>`)},
+      {name:'word/_rels/document.xml.rels',data:enc(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>${rels}</Relationships>`)},
+      {name:'word/document.xml',data:enc(doc)},{name:'word/styles.xml',data:enc(styles)},...media];
+    return{bytes:makeZip(files),pages:n,chars:textChars,ocrPages,noText}}
+};
+const DOCX_MIME='application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+function askWord(name,getBytes){
+  name=String(name||'document').replace(/\.pdf$/i,'').replace(/ \(edited\)$/,'');
+  openModal(`<h3>Export as Word (.docx)</h3>
+   <p class="small" style="margin-top:0">Makes an editable Word file from the text: headings, paragraphs, bold and italic. Exact layout, tables and pictures aren't copied, so check it before sending. Scanned pages are read automatically.</p>
+   <label class="row" style="gap:10px;margin:10px 0;cursor:pointer"><input type="checkbox" id="wdPics" style="width:20px;height:20px"><span><b>Add a picture of each page</b><br><small class="small">Shows how the original looked, above its text. Makes the file bigger.</small></span></label>
+   <div class="btns"><button class="btn" data-x>Cancel</button><button class="btn pri" id="wdGo">${icon('word')} Export</button></div>`);
+  $('#wdGo').onclick=async()=>{const pics=$('#wdPics').checked;closeModal();busy('Getting the document ready…');let worker=null,ocrFail=false;
+    try{const bytes=await getBytes();
+      const ocr=async c=>{if(ocrFail)return null;try{if(!worker){$('#busyMsg').textContent='Getting text reader ready…';worker=await ocrWorker()}return await ocrCanvas(worker,c)}catch(e){console.warn(e);ocrFail=true;return null}};
+      const r=await DOCX.build(bytes,{pictures:pics,title:name,ocr,onPage:(i,n)=>{$('#busyMsg').textContent=`Making Word file: page ${i} of ${n}…`}});
+      unbusy();
+      if(!r.chars&&!pics){toast(ocrFail?"No text found, and the text reader couldn't load (are you offline?). Pictures of the pages were added instead.":'No text found, so pictures of the pages were added instead.',6000)}
+      else if(r.ocrPages)toast(`${r.ocrPages} scanned page${r.ocrPages>1?'s were':' was'} read to get the text. Check spelling before sending.`,5000);
+      else if(ocrFail)toast("Some scanned pages couldn't be read (are you offline?), so they were added as pictures.",6000);
+      readyShare([{name:name+'.docx',bytes:r.bytes,type:DOCX_MIME}],name)}
+    catch(e){console.error(e);unbusy();toast("Couldn't make the Word file")}
+    finally{if(worker)try{await worker.terminate()}catch(e){}}}}
 /* ---------------- reduce file size of saved PDFs ---------------- */
 /* Reduce size, keeping everything that makes a PDF a PDF (links, form fields, bookmarks, sharp text):
    only the pictures inside are made smaller and re-compressed. */
@@ -2575,11 +2688,12 @@ function askShrink(docs,done){
 async function libItemMenu(id){
   const d=LIB.docs.find(x=>x.id===id);if(!d)return;
   const m=openModal(`<div style="display:flex;gap:12px;align-items:center;margin-bottom:12px">${d.thumb?`<img src="${d.thumb}" style="width:56px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.2)">`:''}<div><h3 style="margin:0">${esc(d.name)}</h3><span class="small">${esc(d.folder)} · ${d.pages} page${d.pages>1?'s':''} · ${fmtSize(d.size||0)}</span></div></div>
-   <div class="lacts"><button class="btn pri" id="liOpen">${icon('pen')}Open</button><button class="btn" id="liDl">${icon('download')}Download</button><button class="btn" id="liShare">${icon('share')}Share / Save to…</button>${isReceiptFolder(d.folder)||d.receipt?`<button class="btn" id="liRc">${icon('form')}Receipt details</button>`:''}<button class="btn" id="liRen">${icon('edit')}Rename</button><button class="btn" id="liMove">${icon('folder')}Move</button><button class="btn" id="liShrink">${icon('smaller')}Reduce size</button><button class="btn red" id="liDel">${icon('trash')}Delete</button></div>
+   <div class="lacts"><button class="btn pri" id="liOpen">${icon('pen')}Open</button><button class="btn" id="liDl">${icon('download')}Download</button><button class="btn" id="liShare">${icon('share')}Share / Save to…</button>${isReceiptFolder(d.folder)||d.receipt?`<button class="btn" id="liRc">${icon('form')}Receipt details</button>`:''}<button class="btn" id="liRen">${icon('edit')}Rename</button><button class="btn" id="liMove">${icon('folder')}Move</button><button class="btn" id="liShrink">${icon('smaller')}Reduce size</button><button class="btn" id="liWord">${icon('word')}Export as Word</button><button class="btn red" id="liDel">${icon('trash')}Delete</button></div>
    <div id="liExtra"></div><div class="btns"><button class="btn" data-x>Close</button></div>`);
   $('#liOpen').onclick=()=>{closeModal();libOpenDoc(d)};
   $('#liShare').onclick=()=>{closeModal();libShare(d)};
   $('#liShrink').onclick=()=>{closeModal();setTimeout(()=>askShrink([d],renderLib),30)};
+  $('#liWord').onclick=()=>{closeModal();setTimeout(()=>askWord(d.name,async()=>new Uint8Array(await d.blob.arrayBuffer())),30)};
   if($('#liRc'))$('#liRc').onclick=()=>{closeModal();setTimeout(()=>openReceiptDetails(d,false),30)};
   $('#liDl').onclick=async()=>{closeModal();offerDownload(d.name+'.pdf',new Uint8Array(await d.blob.arrayBuffer()))};
   $('#liRen').onclick=()=>{$('#liExtra').innerHTML=`<div class="row"><input type="text" id="liName" value="${esc(d.name)}"><button class="btn pri" id="liRenOk">Save</button></div>`;$('#liName').focus();
