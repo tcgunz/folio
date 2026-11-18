@@ -52,6 +52,7 @@ body.typing #props{visibility:hidden}
 .pg .ov{touch-action:none;cursor:crosshair}
 #pages.hand .ov{touch-action:pan-x pan-y;cursor:grab}
 #pages.select .ov{cursor:default}
+#pages.tap .ov{touch-action:pan-x pan-y}
 .plink{position:absolute;pointer-events:none;border-bottom:2px solid rgba(37,99,235,.45);background:rgba(37,99,235,.07);border-radius:2px}
 .pnum{position:absolute;bottom:-1px;right:-1px;transform:translateY(100%);font-size:11px;color:var(--muted);padding:2px 2px}
 #empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px}
@@ -405,7 +406,7 @@ body.ci #menu [data-m=region] .ic{color:var(--c-sky)}body.ci #menu [data-m=rctog
     <hr>
     <button data-m="about"><span class="ic" data-i="info"></span>About, terms &amp; licences</button>
     <button data-m="close"><span class="ic" data-i="x"></span>Close document</button>
-    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-18 · 87<br>© 2026 Tommy Chieng. All rights reserved.</div>
+    <div class="small" style="padding:6px 12px 4px;opacity:.7">Folio version 2026-11-18 · 88<br>© 2026 Tommy Chieng. All rights reserved.</div>
   </div>
 </div>
 
@@ -962,9 +963,18 @@ function setSel(sel){
   [prev&&prev.pid,sel&&sel.pid].forEach(id=>{if(id&&els.get(id))drawOverlay(els.get(id))});
   renderSelbar();
 }
+const TAPT=new Set(['text','check','cross','place','edittext','select']),TAP={p:null,t:0,lock:false};
+const fakePtr=ev=>({clientX:ev.clientX,clientY:ev.clientY,pointerType:ev.pointerType,isPrimary:true,pointerId:ev.pointerId,button:0,preventDefault(){}});
 function onDown(ev,e){
   if(TXE){ev.preventDefault();finishInline();return}
   if(PINCH.on||(ev.pointerType==='touch'&&!ev.isPrimary))return;
+  if(ev.pointerType==='touch'&&!ev._go&&TAPT.has(S.tool)){const pg=getPg(e.id);
+    let grab=false;if(S.tool==='select'&&pg){const[sx,sy]=loc(ev,e);grab=hitTest(e,pg,sx,sy)>=0;
+      if(!grab&&S.sel&&S.sel.pid===pg.id){const a=pg.annots[S.sel.i];if(a){const b=bbox(a,e.vp,rot(pg));grab=Math.hypot(sx-b[2],sy-b[3])<28}}}
+    if(grab)TAP.lock=true;
+    else{ev.preventDefault();clearTimeout(TAP.t);const P={e,id:ev.pointerId,x:ev.clientX,y:ev.clientY,fk:fakePtr(ev)};TAP.p=P;
+      if(S.tool==='select'||S.tool==='edittext')TAP.t=setTimeout(()=>{if(TAP.p!==P)return;TAP.p=null;TAP.lock=true;try{navigator.vibrate&&navigator.vibrate(12)}catch(_){}onDown(Object.assign(P.fk,{_go:1,_marq:1}),P.e)},420);
+      return}}
   const pg=getPg(e.id);if(!pg)return;const t=S.tool;
   if(t==='hand'&&ev.pointerType==='mouse'){const hit=linkAt(ev.clientX,ev.clientY);if(hit){followLink(hit);return}}
   if(t==='hand'||t==='rotpage'){if(ev.pointerType==='mouse'){const v=$('#viewer');drag={mode:'pan',e,x:ev.clientX,y:ev.clientY,sl:v.scrollLeft,st:v.scrollTop};e.c2.setPointerCapture(ev.pointerId)}return}
@@ -977,7 +987,7 @@ function onDown(ev,e){
       drag={mode:'resize',e,orig:JSON.parse(JSON.stringify(a)),c:vp.convertToPdfPoint(cx,cy),cs:[cx,cy],d0:Math.max(10,Math.hypot(sx-cx,sy-cy)),moved:false};return}}}
   if(t==='select'||t==='edittext'){
     const h=hitTest(e,pg,sx,sy);
-    if(h>=0&&t==='edittext'&&['tblock','edit'].includes(pg.annots[h].t)){editAnnot(e,pg,h);return}
+    if(h>=0&&t==='edittext'&&!ev._marq&&['tblock','edit'].includes(pg.annots[h].t)){editAnnot(e,pg,h);return}
     if(h>=0&&t==='select'){if(S.msel)setMsel(null);setSel({pid:pg.id,i:h});S.undo.push(JSON.stringify(S.pages));drag={mode:'move',e,last:[sx,sy],moved:false};return}
     if(S.sel&&ev.pointerType!=='touch')setSel(null);ensureText(e,pg);drag={mode:'marq',e,start:[sx,sy],end:[sx,sy]};drawOverlay(e);return}
   if(S.sel)setSel(null);
@@ -992,6 +1002,7 @@ function onDown(ev,e){
     S.pending=null;setTool('select');drawOverlay(e);setSel({pid:pg.id,i:pg.annots.length-1});return}
 }
 function onMove(ev,e){
+  if(TAP.p&&ev.pointerId===TAP.p.id&&Math.hypot(ev.clientX-TAP.p.x,ev.clientY-TAP.p.y)>10){clearTimeout(TAP.t);TAP.p=null}
   if(PINCH.on||!drag||drag.e!==e)return;
   if(drag.mode==='pan'){const v=$('#viewer');v.scrollLeft=drag.sl-(ev.clientX-drag.x);v.scrollTop=drag.st-(ev.clientY-drag.y);return}
   const pg=getPg(e.id),vp=e.vp;const evs=(drag.mode==='ink'&&ev.getCoalescedEvents)?ev.getCoalescedEvents():[ev];
@@ -1006,6 +1017,9 @@ function onMove(ev,e){
   drawOverlay(e);
 }
 function onUp(ev,e){
+  if(TAP.p&&ev.pointerId===TAP.p.id){const P=TAP.p;TAP.p=null;clearTimeout(TAP.t);
+    if(ev.type==='pointerup'&&Math.hypot(ev.clientX-P.x,ev.clientY-P.y)<12){onDown(Object.assign(P.fk,{_go:1}),P.e);if(drag&&drag.e===P.e)onUp(fakePtr(ev),P.e)}return}
+  TAP.lock=false;
   if(!drag||drag.e!==e)return;const pg=getPg(e.id);
   if(drag.mode==='marq'){const d=drag;drag=null;drawOverlay(e);finishMarq(e,pg,d);return}
   if((drag.mode==='move'||drag.mode==='resize')&&!drag.moved)S.undo.pop();
@@ -1024,13 +1038,13 @@ function setTool(t){finishInline();
   if(t==='wmark'){openWm();return}
   if(t!=='place')S.pending=null;
   S.tool=t;
-  $('#pages').className=(t==='hand'||t==='rotpage')?'hand':t==='select'?'select':t==='edittext'?'select':'';
+  $('#pages').className=((t==='hand'||t==='rotpage')?'hand':t==='select'?'select':t==='edittext'?'select':'')+(TAPT.has(t)?' tap':'');
   if(t!=='select'&&S.sel)setSel(null);if(S.msel)setMsel(null);
   renderTools();renderProps();redrawAll();
 }
 function renderProps(){
   const t=S.tool,p=$('#props'),k=CKEY[t];let h='';p.classList.toggle('tiponly',t==='hand');
-  const hints={hand:'Drag to scroll, pinch to zoom, double-tap to fit. Pick a tool below to edit.',select:'Tap an item to select it, then drag to move, or pinch / drag the round corner handle to resize. Drag a box to select several.',wo:'Drag over anything to cover it with white.',edittext:'Tap a paragraph to edit it, or drag across exactly the lines you want.',place:'Tap on a page to place it.'};
+  const hints={hand:'Drag to scroll, pinch to zoom, double-tap to fit. Pick a tool below to edit.',select:'Tap an item to select it, then drag to move, or pinch / drag the round corner handle to resize. Drag to scroll; press and hold, then drag a box to select several.',wo:'Drag over anything to cover it with white.',edittext:'Tap a paragraph to edit it. Drag to scroll. To pick exact lines, press and hold, then drag across them.',place:'Tap on a page to place it.'};
   if(t==='rotpage'){const n=S.pages.length;
     p.innerHTML=n?`<span class="hint" style="color:var(--ink);font-weight:600">Page ${S.cur+1} of ${n}</span>
       <button class="btn" data-r="-90" style="height:34px;display:flex;align-items:center;gap:5px">${icon('rotL')}Left</button>
@@ -1905,7 +1919,7 @@ function drawCrop(){
     x.beginPath();x.arc(lx,ly,R,0,7);x.strokeStyle='#fff';x.lineWidth=2;x.stroke()}
 }
 window.addEventListener('resize',()=>{if($('#crop').classList.contains('on'))drawCrop()});
-{let rT;addEventListener('resize',()=>{clearTimeout(rT);rT=setTimeout(()=>{if(!S.pages.length||PINCH.on)return;if(S.fit==='page')fitPage(true);else if(S.fit==='width')fitWidth(true)},250)})}
+{let rT,rW=innerWidth;addEventListener('resize',()=>{clearTimeout(rT);rT=setTimeout(()=>{if(Math.abs(innerWidth-rW)<2)return;rW=innerWidth;if(!S.pages.length||PINCH.on||TXE)return;if(S.fit==='page')fitPage(true);else if(S.fit==='width')fitWidth(true)},250)})}
 const cropCv=$('#cropCv');
 cropCv.addEventListener('pointerdown',ev=>{if(SC.view==='preview'){setCropView('corners');return}const r=cropCv.getBoundingClientRect(),px=ev.clientX-r.left,py=ev.clientY-r.top;let bi=-1,bd=1e9;
   SC.q.forEach((q,i)=>{const d=Math.hypot(CR.ox+q[0]*CR.s-px,CR.oy+q[1]*CR.s-py);if(d<bd){bd=d;bi=i}});
@@ -2027,7 +2041,7 @@ function finishMarq(e,pg,d){
   const tb=textStruct(e),tap=Math.hypot(d.end[0]-d.start[0],d.end[1]-d.start[1])<8;let lines=[],ann=[];
   if(tap){const P=e.vp.convertToPdfPoint(...d.start),L=lineAt(tb,P);
     if(L){const B=tb.blocks.find(b=>b.lines.includes(L));lines=B?B.lines:[L]}
-    else if(S.tool==='edittext'){if(!editRotatedAt(e,pg,P))toast('No text there. Tap a paragraph, or drag across the lines you want.');return}
+    else if(S.tool==='edittext'){if(!editRotatedAt(e,pg,P))toast('No text there. Tap a paragraph, or press and hold then drag across the lines you want.');return}
     else{setMsel(null);return}}
   else{const x0=Math.min(d.start[0],d.end[0]),x1=Math.max(d.start[0],d.end[0]),y0=Math.min(d.start[1],d.end[1]),y1=Math.max(d.start[1],d.end[1]);
     lines=tb.lines.filter(l=>{const r=scrRect(e,lineRect(l)),cx=(r[0]+r[2])/2,cy=(r[1]+r[3])/2;return cx>=x0&&cx<=x1&&cy>=y0&&cy<=y1});
@@ -3295,7 +3309,10 @@ const PINCH={on:null};
   const mid=t=>[(t[0].clientX+t[1].clientX)/2,(t[0].clientY+t[1].clientY)/2];
   const cancelDrag=()=>{if(!drag)return;const e=drag.e,pg=getPg(e.id);
     if(pg&&(drag.mode==='ink'||drag.mode==='shape')){pg.annots.pop();S.undo.pop()}drag=null;drawOverlay(e);updateUI()};
+  v.addEventListener('touchmove',ev=>{if(TAP.lock&&ev.touches.length===1&&ev.cancelable)ev.preventDefault()},{passive:false});
+  v.addEventListener('touchend',ev=>{if(!ev.touches.length)setTimeout(()=>{TAP.lock=false},0)});
   v.addEventListener('touchstart',ev=>{
+    if(ev.touches.length===2){TAP.p=null;clearTimeout(TAP.t);TAP.lock=false}
     if(ev.touches.length!==2||!S.pages.length)return;
     if(S.sel&&S.tool==='select'){const pg=getPg(S.sel.pid),e=els.get(S.sel.pid),a=pg&&pg.annots[S.sel.i];
       if(a&&e){if(drag&&drag.mode==='move'){drag=null}else S.undo.push(JSON.stringify(S.pages));const b=bbox(a,e.vp,rot(pg)),cx=(b[0]+b[2])/2,cy=(b[1]+b[3])/2;
@@ -3315,7 +3332,7 @@ const PINCH={on:null};
   const end=ev=>{
     const P=PINCH.on;if(!P||ev.touches.length>=2)return;PINCH.on=null;
     if(P===PINCH.item){PINCH.item=null;S.dirty=true;updateUI();renderSelbar();return}box.style.transform='';box.style.transformOrigin='';
-    if(Math.abs(P.k-1)<.02){$('#zVal').textContent=Math.round(S.scale*100)+'%';return}
+    if(Math.abs(P.k-1)<.02){$('#zVal').textContent=Math.round(S.scale*100)+'%';v.scrollLeft-=P.m[0]-P.m0[0];v.scrollTop-=P.m[1]-P.m0[1];return}
     S.scale=Math.max(.25,Math.min(5,S.scale*P.k));relayout(false);
     const vr=v.getBoundingClientRect();
     if(P.anchor&&els.get(P.anchor.id)){const r=els.get(P.anchor.id).el.getBoundingClientRect();v.scrollLeft+=r.left+P.anchor.fx*r.width-P.m[0];v.scrollTop+=r.top+P.anchor.fy*r.height-P.m[1]}
