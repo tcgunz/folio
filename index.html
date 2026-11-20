@@ -758,7 +758,10 @@ const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let uid=1;
 let toastT;
-function toast(m,ms=2800){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),ms)}
+function toast(m,ms=2800){const t=$('#toast');t.textContent=m;t.style.pointerEvents='';t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),ms)}
+/* toast with one tappable action, e.g. "Esso · $120.01 read  Check" */
+function toastAct(m,label,fn,ms=7000){const t=$('#toast');t.textContent=m;const b=document.createElement('button');b.textContent=label;b.style.cssText='margin-left:12px;background:none;border:0;color:#a5b4fc;font:inherit;font-weight:700;padding:4px 2px;cursor:pointer';
+  const hide=()=>{t.classList.remove('on');t.style.pointerEvents=''};b.onclick=()=>{hide();fn()};t.appendChild(b);t.style.pointerEvents='auto';t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(hide,ms)}
 function busy(m){$('#busyMsg').textContent=m||'Working…';$('#busy').classList.add('on')}
 function unbusy(){$('#busy').classList.remove('on')}
 const tick=()=>new Promise(r=>setTimeout(r,30));
@@ -1859,7 +1862,7 @@ V.addEventListener('drop',e=>{e.preventDefault();const fs=[...e.dataTransfer.fil
 /* ================= SCANNER ================= */
 const SC={pages:[],edit:-1,q:null,rot:0,filter:'auto',drag:-1};
 const FILTERS=[['auto','Auto'],['gray','Grayscale'],['bw','Black & white'],['orig','Original']];
-function openScanner(mode){SC.mode=mode==='receipt'?'receipt':'doc';closeDrawers();$('#scTitle').textContent=SC.mode==='receipt'?'Scan receipts':'Scanner';{const b=$('#scSave');b.lastChild.textContent=SC.mode==='receipt'?'Next':'Save PDF'}$('#scan').classList.add('on');renderScan()}
+function openScanner(mode){SC.mode=mode==='receipt'?'receipt':'doc';closeDrawers();$('#scTitle').textContent=SC.mode==='receipt'?'Scan receipts':'Scanner';{const b=$('#scSave');b.lastChild.textContent=SC.mode==='receipt'?'Next':'Save PDF'}$('#scan').classList.add('on');renderScan();if(SC.mode==='receipt')setTimeout(()=>rcWorker().catch(()=>{}),1200)}
 $('#scBack').onclick=()=>$('#scan').classList.remove('on');
 $('#fCam').onchange=e=>addScans([...e.files],false);
 $('#fPic').onchange=e=>addScans([...e.files],false);
@@ -2187,7 +2190,10 @@ async function scansToPdf(){
   return d.save();
 }
 const scanName=()=>{const t=new Date();return`Scan ${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}.pdf`};
-$('#scSave').onclick=async()=>{await libFolders();openScanSave('save')};
+$('#scSave').onclick=async()=>{await libFolders();
+  if(SC.mode==='receipt'&&SC.pages.length===1){SC.forReceipt=true;let n=scanName();if(!/\.pdf$/i.test(n))n+='.pdf';   // one receipt: save with the usual settings, no questions
+    return saveReceiptsQuick('keep',lsGet('folio.q.rc')||'high',n,LIB.folders.find(isReceiptFolder)||'Receipts',lsGet('folio.dl.rc')==='1',false)}
+  openScanSave('save')};
 $('#scEdit').onclick=()=>openScanSave('edit');
 
 /* --- crop editor --- */
@@ -2583,7 +2589,12 @@ function wordLines(ws){ws=ws.map(w=>({...w,yc:(w.y0+w.y1)/2,h:w.y1-w.y0})).sort(
   return lines.map(l=>l.ws.sort((a,b)=>a.x0-b.x0).map(w=>w.t).join(' ')).join('\n')}
 /* how well a reading of a receipt hangs together: subtotal + tax (+ tip) = total scores highest */
 function rcScore(ws){const r=readReceipt(wordLines(ws)),n=['vendor','date','subtotal','tax','total'].filter(k=>r[k]).length,t=+r.total,st=+r.subtotal,tx=+r.tax;
-  const ok=!!(r.total&&r.subtotal&&r.tax&&Math.abs(st+tx-t)<=.03);return{s:n+(ok?5:0),ok}}
+  const ok=!!(r.total&&r.subtotal&&r.tax&&Math.abs(st+tx-t)<=.03);return{s:n+(ok?5:0),ok,total:!!r.total,good:ok||!!(r.total&&r.date&&r.vendor)}}
+/* the receipt reader stays loaded between receipts (loading it takes a few seconds), and is warmed up when the receipt scanner opens.
+   TODO(Play Store / Capacitor build): replace Tesseract here with Google ML Kit on-device text recognition —
+   under a second per receipt, far more accurate on thermal paper, works offline, no server. See README. */
+let rcWorkerP=null,rcProg=null;
+function rcWorker(){if(!rcWorkerP)rcWorkerP=ocrWorker(pr=>{if(rcProg)rcProg(pr)},true).catch(e=>{rcWorkerP=null;throw e});return rcWorkerP}
 /* faint or coloured receipts (blue/cyan thermal paper, dot-matrix print): grey, enlarged when narrow, and turned into
    clean black-on-white by comparing each pixel with its neighbourhood, so uneven light and paper colour drop out */
 function rcEnhance(c){
@@ -2595,9 +2606,10 @@ function rcEnhance(c){
   for(let y=0;y<H;y++){const y0=Math.max(0,y-r),y1=Math.min(H,y+r+1);for(let xx=0;xx<W;xx++){const x0=Math.max(0,xx-r),x1=Math.min(W,xx+r+1);
     const sum=I[y1*(W+1)+x1]-I[y0*(W+1)+x1]-I[y1*(W+1)+x0]+I[y0*(W+1)+x0],mean=sum/((x1-x0)*(y1-y0)),v=g[y*W+xx]<mean-10?0:255,j=(y*W+xx)*4;d[j]=d[j+1]=d[j+2]=v;d[j+3]=255}}
   x.putImageData(id,0,0);return o}
-/* receipts: read line by line first; if the numbers don't add up, read a cleaned-up copy, then try automatic layout, and keep the best */
-async function ocrReceipt(worker,c){let best=await ocrCanvas(worker,c),bs=rcScore(best);if(bs.ok)return best;
-  try{const w2=await ocrCanvas(worker,rcEnhance(c)),s2=rcScore(w2);if(s2.s>bs.s){best=w2;bs=s2}if(bs.ok)return best}catch(e){console.warn(e)}
+/* receipts: read once. Only if the store, date or total is missing (or the numbers don't add up) read a cleaned-up copy;
+   automatic layout is the last resort when there is still no total. Most receipts now need one pass instead of three. */
+async function ocrReceipt(worker,c){let best=await ocrCanvas(worker,c),bs=rcScore(best);if(bs.good)return best;
+  try{const w2=await ocrCanvas(worker,rcEnhance(c)),s2=rcScore(w2);if(s2.s>bs.s){best=w2;bs=s2}if(bs.good||bs.total)return best}catch(e){console.warn(e)}
   try{await worker.setParameters({tessedit_pageseg_mode:'3'});const w3=await ocrCanvas(worker,c);return rcScore(w3).s>bs.s?w3:best}
   catch(e){console.warn(e);return best}finally{try{await worker.setParameters({tessedit_pageseg_mode:'6'})}catch(e){}}}
 async function ocrCanvas(worker,c){
@@ -2659,7 +2671,7 @@ function openScanSave(mode){
   if(!SC.pages.length)return;let look='keep',ocr=lsGet('folio.ocr')!=='0';
   const m=openModal(`<h3>${mode==='edit'?'Open scan in editor':SC.mode==='receipt'?'Save receipt':'Save scan as PDF'}</h3>
    ${mode==='save'?`<input type="text" id="ssName" value="${esc(scanName())}">`:''}
-   ${mode==='save'?folderPickerHTML(SC.mode==='receipt'?(LIB.folders.find(isReceiptFolder)||'Receipts'):(lsGet('folio.lastFolder.scan')&&LIB.folders.includes(lsGet('folio.lastFolder.scan'))&&!isReceiptFolder(lsGet('folio.lastFolder.scan'))?lsGet('folio.lastFolder.scan'):'Documents'),true)+`<label class="row" style="gap:10px;margin:8px 0 0"><input type="checkbox" id="ssDl" ${lsGet('folio.dl.scan')!=='0'?'checked':''} style="width:18px;height:18px;accent-color:var(--acc)"><span>Also download to this phone</span></label>`:''}
+   ${mode==='save'?folderPickerHTML(SC.mode==='receipt'?(LIB.folders.find(isReceiptFolder)||'Receipts'):(lsGet('folio.lastFolder.scan')&&LIB.folders.includes(lsGet('folio.lastFolder.scan'))&&!isReceiptFolder(lsGet('folio.lastFolder.scan'))?lsGet('folio.lastFolder.scan'):'Documents'),true)+`<label class="row" style="gap:10px;margin:8px 0 0"><input type="checkbox" id="ssDl" ${SC.mode==='receipt'?(lsGet('folio.dl.rc')==='1'?'checked':''):(lsGet('folio.dl.scan')!=='0'?'checked':'')} style="width:18px;height:18px;accent-color:var(--acc)"><span>Also download to this phone</span></label>`:''}
    <p class="small" style="margin:12px 0 6px">File size</p>
    <div class="chips" id="ssQ" style="padding:0;flex-wrap:wrap">${[['small','Small'],['std','Standard'],['high','High']].map(([k,l])=>`<button data-q="${k}" class="btn" style="height:36px">${l}</button>`).join('')}</div>
    <p class="small" id="ssQL" style="margin:6px 0 0"></p><p class="small" style="margin:2px 0 0;opacity:.75">Sizes are estimates for these pages in the look shown.</p>
@@ -2705,7 +2717,8 @@ function openScanSave(mode){
     let name=mode==='save'?($('#ssName').value.trim()||scanName()):scanName();if(!/\.pdf$/i.test(name))name+='.pdf';
     const folder=mode==='save'?folderPickerValue():'',wantDl=mode==='save'&&$('#ssDl').checked;
     if(mode==='save'&&!folder&&!wantDl){toast('Choose a folder or tick download');return}
-    if(mode==='save'){lsSet('folio.dl.scan',wantDl?'1':'0');if(folder&&!isReceiptFolder(folder))lsSet('folio.lastFolder.scan',folder)}
+    if(mode==='save'){lsSet(SC.mode==='receipt'?'folio.dl.rc':'folio.dl.scan',wantDl?'1':'0');if(folder&&!isReceiptFolder(folder))lsSet('folio.lastFolder.scan',folder)}
+    if(mode==='save'&&folder&&isReceiptFolder(folder)){closeModal();SC.forReceipt=true;await saveReceiptsQuick(look,qual,name,folder,wantDl,SC.pages.length>1&&split);return}
     ocr=$('#ssOcr').checked;lsSet('folio.ocr',ocr?'1':'0');if(isReceiptFolder(folder))ocr=true;closeModal();
     const splitNow=mode==='save'&&folder&&isReceiptFolder(folder)&&SC.pages.length>1&&split;
     SC.forReceipt=isReceiptFolder(folder);let bytes;try{bytes=await buildScanPdf(look,ocr,qual)}catch(e){console.error(e);unbusy();toast('Could not build the PDF: '+(e.message||e),4500);return}
@@ -2717,6 +2730,48 @@ function openScanSave(mode){
       if(newId&&isReceiptFolder(folder)){const nd=await libGet(newId);if(nd)setTimeout(()=>openReceiptDetails(nd,true),400)}}
     else{busy('Opening in editor…');try{const append=S.pages.length>0;await addBytesAsDoc(bytes,name,append);SC.pages=[];renderScan();$('#scan').classList.remove('on');toast(append?'Scanned pages added to your document':ocr?'Scan opened. Use Edit text to change any words.':'Scan opened in the editor',4000)}catch(e){console.error(e);toast('Could not open the scan')}unbusy()}
   };
+}
+/* ---- receipts: save at once, read in the background ----
+   The receipt is saved straight away (no waiting), the scanner is ready for the next one, and the text is read
+   behind the scenes. When it's done a toast offers "Check". The Library shows "Reading…" on receipts in the queue. */
+const RCQ=[],rcReading=new Set();let rcBusy=false;
+async function saveReceiptsQuick(look,qual,name,folder,wantDl,separate){
+  let out;busy('Saving…');try{out=await buildScanPdf(look,false,qual,null,true)}catch(e){console.error(e);unbusy();toast('Could not build the PDF: '+(e.message||e),4500);return}
+  const{PDFDocument}=PDFLib,base=name.replace(/\.pdf$/i,''),batch=[];
+  try{if(separate&&out.imgs.length>1){const src=await PDFDocument.load(out.bytes);
+      for(let i=0;i<out.imgs.length;i++){const d=await PDFDocument.create(),[pg]=await d.copyPages(src,[i]);d.addPage(pg);const nm=`${base} (${i+1})`;const id=await libSave(nm,folder,await d.save());batch.push({id,name:nm,imgs:[out.imgs[i]]})}}
+    else{const id=await libSave(base,folder,out.bytes);batch.push({id,name:base,imgs:out.imgs})}}
+  catch(e){console.error(e);unbusy();toast('Could not save: '+(e.message||e),4500);return}
+  unbusy();SC.pages=[];renderScan();
+  const ids=batch.map(j=>j.id);batch.forEach(j=>{j.dl=wantDl;j.batch=ids;rcReading.add(j.id)});RCQ.push(...batch);
+  toast(batch.length>1?`${batch.length} receipts saved. Reading them in the background — go ahead and scan the next one.`:'Receipt saved. Reading it in the background — go ahead and scan the next one.',3500);
+  if($('#lib').classList.contains('on'))renderLib();rcRun();
+}
+async function rcRun(){if(rcBusy)return;rcBusy=true;
+  while(RCQ.length){const j=RCQ.shift();let doc=null;
+    try{doc=await rcReadJob(j)}catch(e){console.error(e)}
+    rcReading.delete(j.id);if($('#lib').classList.contains('on'))renderLib();
+    const last=!j.batch.some(id=>rcReading.has(id));
+    if(j.batch.length===1){if(doc){const r=doc.receipt||{},ok=r.vendor&&r.total&&r.date;
+        toastAct(ok?`${r.vendor} · ${fmtMoney(rcCharged(r))} read`:doc.receipt?'Receipt read — a detail or two needs checking':"Couldn't read this receipt — fill it in when you have a moment",'Check',async()=>{const d=await libGet(j.id);if(d)openReceiptDetails(d,true)})}
+      else toast("Couldn't read a receipt. Open it in Receipts to fill in the details.",4500)}
+    else if(last)toastAct(`${j.batch.length} receipts read`,'Review',()=>reviewReceipts(j.batch))}
+  rcBusy=false}
+async function rcReadJob(j){
+  const worker=await rcWorker(),words=[];
+  for(const u of j.imgs){const im=await imgFrom(u);const c=downscale(im,ocrMax(im.naturalWidth||im.width,im.naturalHeight||im.height));words.push(await ocrReceipt(worker,c))}
+  const before=await libGet(j.id);if(!before)return null;                       // deleted while it was being read
+  const pdf=await PDFLib.PDFDocument.load(await before.blob.arrayBuffer());const font=await pdf.embedFont(PDFLib.StandardFonts.Helvetica);
+  pdf.getPages().forEach((pg,i)=>{if(!words[i])return;const{width:W,height:H}=pg.getSize();drawHiddenWords(pg,words[i],font,(nx,ny)=>[nx*W,H-ny*H])});
+  const by=await pdf.save();const now=await libGet(j.id);if(!now)return null;
+  await libSave(now.name,now.folder,by,j.id);const doc=await libGet(j.id);
+  if(!doc.receipt){const r=readReceipt(doc.text||''),rc={vendor:'',date:'',subtotal:'',total:'',tax:'',tip:'',payment:'',category:'',note:''};   // details the user typed meanwhile win
+    for(const k of['vendor','date','subtotal','total','tax','tip','payment','category'])if(r[k])rc[k]=r[k];
+    const mem=vcatGet(rc.vendor);if(mem)rc.category=mem;
+    if(rc.vendor||rc.total||rc.date){doc.receipt=rc;if(doc.name===j.name)doc.name=[rc.vendor||'Receipt',rc.date].filter(Boolean).join(' ')}
+    await libPut(doc)}
+  if(j.dl)offerDownload(doc.name+'.pdf',by);
+  return doc;
 }
 /* several receipts scanned together: save each page as its own receipt, read it, then show a review list */
 async function saveSplitReceipts(bytes,name,folder,wantDl){
@@ -2746,20 +2801,21 @@ async function reviewReceipts(ids){
   document.querySelectorAll('#modal [data-rv]').forEach(b=>b.onclick=()=>{const d=docs[+b.dataset.rv];closeModal();setTimeout(async()=>{const fresh=await libGet(d.id);openReceiptDetails(fresh||d,false,()=>reviewReceipts(ids))},250)});
   if($('#lib').classList.contains('on'))renderLib();
 }
-async function buildScanPdf(look,ocr,qual,P){
-  P=P||SC.pages;const n=P.length,outs=[];
+async function buildScanPdf(look,ocr,qual,P,wantImgs){
+  P=P||SC.pages;const n=P.length,outs=[];let imgs=null;
   for(let i=0;i<n;i++){const p=P[i];if(look==='keep'||look===p.filter)outs.push(p.out);else{busy(`Preparing page ${i+1} of ${n}…`);await tick();outs.push(await processScan(p,look))}}
   let words=null,worker=null;const rcOcr=SC.mode==='receipt'||!!SC.forReceipt;
   if(ocr){busy('Loading the text reader…');try{worker=await ocrWorker(pr=>{$('#busyMsg').textContent=`Reading text on page ${cur} of ${n}… ${Math.round(pr*100)}%`},rcOcr)}catch(e){toast("The text reader couldn't load, so the PDF was saved without editable text.",5000)}}
   let cur=0;
   if(worker){words=[];try{for(let i=0;i<n;i++){cur=i+1;$('#busyMsg').textContent=`Reading text on page ${cur} of ${n}…`;const im=await imgFrom(outs[i]);const c=downscale(im,ocrMax(im.naturalWidth||im.width,im.naturalHeight||im.height));words.push(await(rcOcr?ocrReceipt(worker,c):ocrCanvas(worker,c)))}}catch(e){console.error(e);words=null;toast('Text recognition failed. Saved without editable text.',4500)}try{await worker.terminate()}catch(e){}}
+  if(wantImgs)imgs=outs.slice();
   const QS={small:[2.2,.75],std:[5,.82],high:[0,.9]}[qual||'std']||[5,.82];   // megapixels, JPEG quality
   if(QS[0]){for(let i=0;i<n;i++){busy(`Optimising page ${i+1} of ${n}…`);await tick();const im=await imgFrom(outs[i]);const c=downscaleArea(im,QS[0]);outs[i]=c.toDataURL('image/jpeg',QS[1])}}
   busy('Building PDF…');await tick();
   const d=await PDFLib.PDFDocument.create();const font=words?await d.embedFont(PDFLib.StandardFonts.Helvetica):null;
   for(let i=0;i<n;i++){const im=await d.embedJpg(dataBytes(outs[i]));const W=im.width>im.height?792:612,H=W*im.height/im.width;const pg=d.addPage([W,H]);pg.drawImage(im,{x:0,y:0,width:W,height:H});
     if(words&&words[i])drawHiddenWords(pg,words[i],font,(nx,ny)=>[nx*W,H-ny*H])}
-  return d.save();
+  const bytes=await d.save();return wantImgs?{bytes,imgs}:bytes;
 }
 
 /* ---------------- movable floating bars ---------------- */
@@ -2937,7 +2993,7 @@ function renderLibGrid(){
   const dt=t=>new Date(t).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'});
   setTimeout(()=>{if(LIB.sel)libSelUpdate()},0);
   const pg=d=>d.pages?` · ${d.pages} page${d.pages>1?'s':''}`:'',lst=LIB.view==='list';
-  G.innerHTML=`<div class="lgrid ${lst?'list':''}">${list.map(d=>{const rc=d.receipt&&isReceiptFolder(d.folder);return`<div class="lcard" data-id="${d.id}"><button class="lmore" data-more="${d.id}" aria-label="More">⋯</button><div class="lth">${d.thumb?`<img src="${d.thumb}" alt="">`:icon('filePlus')}</div><div class="lmeta"><b>${esc(libTitle(d))}</b>${rc&&d.receipt.total?`<span class="lamt">${esc(fmtMoney(rcCharged(d.receipt)))}${d.receipt.category?' · '+esc(d.receipt.category):''}</span>`:''}<span>${LIB.folder?'':esc(d.folder)+' · '}${rc&&d.receipt.date?esc(d.receipt.date):dt(d.updated)}${rc?'':pg(d)}${lst?' · '+fmtSize(d.size||0):''}</span>${dups.has(d.id)?'<span class="ldup">Possible duplicate</span>':''}</div></div>`}).join('')}</div>`;
+  G.innerHTML=`<div class="lgrid ${lst?'list':''}">${list.map(d=>{const rc=d.receipt&&isReceiptFolder(d.folder);return`<div class="lcard" data-id="${d.id}"><button class="lmore" data-more="${d.id}" aria-label="More">⋯</button><div class="lth">${d.thumb?`<img src="${d.thumb}" alt="">`:icon('filePlus')}</div><div class="lmeta"><b>${esc(libTitle(d))}</b>${rcReading.has(d.id)?'<span class="lamt">Reading…</span>':''}${rc&&d.receipt.total?`<span class="lamt">${esc(fmtMoney(rcCharged(d.receipt)))}${d.receipt.category?' · '+esc(d.receipt.category):''}</span>`:''}<span>${LIB.folder?'':esc(d.folder)+' · '}${rc&&d.receipt.date?esc(d.receipt.date):dt(d.updated)}${rc?'':pg(d)}${lst?' · '+fmtSize(d.size||0):''}</span>${dups.has(d.id)?'<span class="ldup">Possible duplicate</span>':''}</div></div>`}).join('')}</div>`;
 }
 $('#libChips').addEventListener('click',async e=>{const b=e.target.closest('button');if(!b||$('#libChips').dataset.nc)return;
   if(b.dataset.other){LIB.showOther=b.dataset.other==='1';renderLib();return}
@@ -3195,7 +3251,7 @@ function openRegion(){
 
 /* well-known Canadian stores → name + usual category */
 const BRANDS=[
- ['Esso',/\bess[o0]\b/i,'Vehicle & fuel'],['Shell',/\bs[h]e[l1]{2}\b|\bsh[e3][l1i|]{1,2}\s*canada|\bshe[l1i|]{1,2}\s*\.\s*ca\b/i,'Vehicle & fuel'],['Petro-Canada',/petro[\s-]*can/i,'Vehicle & fuel'],['Circle K',/c[i1]rc[l1]e\s*k\b|cercle\s*k\b/i,'Vehicle & fuel'],
+ ['Esso',/\be[s5$]{2}[o0]\b|esso\s*express|express\s*pay\b/i,'Vehicle & fuel'],['Shell',/\bs[h]e[l1]{2}\b|\bsh[e3][l1i|]{1,2}\s*canada|\bshe[l1i|]{1,2}\s*\.\s*ca\b/i,'Vehicle & fuel'],['Petro-Canada',/petro[\s-]*can/i,'Vehicle & fuel'],['Circle K',/c[i1]rc[l1]e\s*k\b|cercle\s*k\b/i,'Vehicle & fuel'],
  ['Pioneer',/\bpioneer\b/i,'Vehicle & fuel'],['Ultramar',/ultramar/i,'Vehicle & fuel'],['Husky',/\bhusky\b/i,'Vehicle & fuel'],['Mobil',/(?<!generi[ce]\s{0,3})\bmobil\b(?!\s*e)/i,'Vehicle & fuel'],['Chevron',/chevron/i,'Vehicle & fuel'],
  ['Irving',/\birving\b/i,'Vehicle & fuel'],['Costco Gas',/costco\s*gas/i,'Vehicle & fuel'],['Canadian Tire Gas+',/gas\s*\+|gas\s*bar/i,'Vehicle & fuel'],['407 ETR',/407\s*etr/i,'Vehicle & fuel'],
  ['Marcone',/marcone/i,'Equipment'],['Reliable Parts',/reliable\s*parts/i,'Equipment'],['Grainger',/grainger/i,'Equipment'],['Home Hardware',/home\s*hardware/i,'Equipment'],
@@ -3245,7 +3301,7 @@ function readReceipt(text){
   const lines=text.split(/\n+/).map(l=>l.trim()).filter(Boolean);
   const r={vendor:'',date:'',subtotal:'',total:'',tax:'',tip:'',payment:''};if(!lines.length)return r;
   // vendor: first "name-like" line near the top, or a known web address
-  const skip=/[A-Z]\d[A-Z]\s?\d[A-Z]\d|\s(on|ont|qc|bc|ab|mb|sk|ns|nb|nl|pe)\.?\s*$|\bregular\b|\bpump\b|litre|includ|\bfuel\b|\btotal\b|\d[.,]\d{2}\b|unleaded|premium|diesel|,\s*(on|ont|qc|bc|ab|mb|sk|ns|nb|nl|pe)\b\.?|\bontario\b|@|\bremit|\bdrive\b|\bboulevard|\bblvd|\bhwy|\bhighway|receipt|invoice|welcom|thank|merci|date|time|tel|phone|fax|www|http|address|cashier|store\s*#|^#|order|table|server|copy|copie|questions|drive|street|\bst\b|\bave\b|\brd\b|suite|unit|building|dine[\s-]*in|take[\s-]*out|to[\s-]*go|pick[\s-]*up|delivery|guest|check\s*#|chk|seat|cover|terminal|merchant|transaction|visit\s*us|survey|reprint|duplicate|customer|sale|refund|relev[eé]|record|^\W*$/i;
+  const skip=/[A-Z]\d[A-Z]\s?\d[A-Z]\d|\s(on|ont|qc|bc|ab|mb|sk|ns|nb|nl|pe)\.?\s*$|\bregular\b|\bpump\b|litre|includ|\bfuel\b|\btotal\b|\d[.,]\d{2}\b|unleaded|premium|diesel|,\s*(on|ont|qc|bc|ab|mb|sk|ns|nb|nl|pe)\b\.?|\bontario\b|@|\bremit|\bdrive\b|\bboulevard|\bblvd|\bhwy|\bhighway|receipt|invoice|welcom|thank|merci|date|time|tel|phone|fax|www|http|address|cashier|store\s*#|^#|order|table|server|copy|copie|questions|drive|street|\bst\b|\bave\b|\brd\b|suite|unit|building|dine[\s-]*in|take[\s-]*out|to[\s-]*go|pick[\s-]*up|delivery|guest|check\s*#|chk|seat|cover|terminal|merchant|transaction|visit\s*us|survey|reprint|duplicate|customer|sale|refund|\bstation\s*(?:#|no|n[o0]\b|id)|stationn|\btrans\s*#|relev[eé]|record|^\W*$/i;
   const web=(text.match(/\b(?:www\.)?([a-z0-9-]{3,30})\.(?:com|ca|net|org)\b/i)||[])[1];
   let brand=null,bi=1e9;for(const[n,re,c]of BRANDS){const m=re.exec(text);if(m&&m.index<bi){bi=m.index;brand=[n,c]}}
   if(brand){r.vendor=brand[0];r.category=brand[1]}
@@ -3297,6 +3353,8 @@ function readReceipt(text){
      const bill=r.subtotal&&r.tax?+r.subtotal+ +r.tax:total;if(ch&&ch>bill+.009&&ch-bill<bill*.6)r.tip=(ch-bill).toFixed(2)}}
   // tax shown as "included" (fuel receipts, "HST INCLUDED"): the total already has it, so the subtotal is total − tax
   const taxIncl=lines.some((l,i)=>/includ|[nh]c[l1]ud|\bincl\b|compris/i.test(l)&&(TAXW.test(l)||/\b[hg]s\w?\b/i.test(l)||/fuel|gas|carburant|essence/i.test(l)));
+  if(taxIncl&&r.tax&&r.total&&REGION.rate){const rr=REGION.rate/100,want=+r.tax*(1+rr)/rr;
+    if(Math.abs(+r.total-want)>Math.max(.5,want*.01)){const c=allAmts.filter(v=>Math.abs(v-want)<=Math.max(.15,want*.004));if(c.length){r.total=c.reduce((a,b)=>Math.abs(b-want)<Math.abs(a-want)?b:a).toFixed(2);r.subtotal=''}}}
   if(taxIncl&&!r.tax&&r.total&&REGION.rate){const rr=REGION.rate/100;r.tax=(+r.total*rr/(1+rr)).toFixed(2)}   // amount unreadable: work it out from the rate
   if(taxIncl&&r.tax&&r.total&&(!r.subtotal||Math.abs(+r.subtotal- +r.total)<=.03))r.subtotal=(+r.total- +r.tax).toFixed(2);
   // the total kept is the BILL total (subtotal + tax); a tip is separate and added on top
