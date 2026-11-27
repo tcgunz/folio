@@ -1,7 +1,7 @@
 {
  "id": "./",
- "name": "Folio — PDF Editor & Scanner",
- "short_name": "Folio",
+ "name": "Redoic — PDF Editor & Scanner",
+ "short_name": "Redoic",
  "description": "PDF reader and editor, document scanner, and receipt and expense tracker.",
  "start_url": "./",
  "scope": "./",
